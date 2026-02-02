@@ -8,8 +8,8 @@ import json
 import click
 
 from config import get_settings
-from mb_queue.persist_pgmq import PersistPGMQ as QueueRepository
-from mb_queue.queue_model_dto import DataDTO
+from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
+from msg_bus.queue_model_dto import DataDTO
 
 
 def queue_exists(queue_repo: QueueRepository, queue_name: str) -> bool:

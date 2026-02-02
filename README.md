@@ -33,9 +33,9 @@ The version of the message. Intended to be used for handlers to know how to rout
 
 You can trigger these with `uv run tool --help` replacing tool with the listed tool name below to get help and understand the parameters. 
 
-- **enqueue** Adds an item to a queue.
-- **status** Lists basic metrics about a queue
-- **process** Handles the messages in a queue
+- **msg-bus-enqueue** Adds an item to a queue.
+- **msg-bus-status** Lists basic metrics about a queue
+- **msg-bus-process** Handles the messages in a queue
 
 ### Handling Messages
 

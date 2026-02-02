@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 
 from pgmq import Message
 
-from mb_queue.queue_model_dto import DataDTO
+from msg_bus.queue_model_dto import DataDTO
 
 
 class PersistBase(ABC):

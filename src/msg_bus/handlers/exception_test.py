@@ -1,10 +1,10 @@
-"""Exception-test handler for the exception_test queue.
+"""Exception-test handler for the exception_test bus.
 
 Used to verify that validation and handling failures are caught, logged,
 and (for handle) re-enqueued with error metadata.
 """
 
-from mb_queue.handlers.base import BaseHandler
+from msg_bus.handlers.base import BaseHandler
 
 
 class Handler(BaseHandler):

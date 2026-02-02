@@ -12,8 +12,8 @@ from pgmq.decorators import transaction
 from pydantic import PostgresDsn
 
 from config import get_settings
-from mb_queue.persist_base import PersistBase
-from mb_queue.queue_model_dto import DataDTO
+from msg_bus.persist_base import PersistBase
+from msg_bus.queue_model_dto import DataDTO
 
 settings = get_settings()
 

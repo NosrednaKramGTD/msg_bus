@@ -4,8 +4,8 @@ from unittest import TestCase
 from icecream import ic
 
 from config import get_settings
-from mb_queue.persist_pgmq import PersistPGMQ as QueueRepository
-from mb_queue.queue_model_dto import DataDTO
+from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
+from msg_bus.queue_model_dto import DataDTO
 
 settings = get_settings()
 

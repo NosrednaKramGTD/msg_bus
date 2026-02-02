@@ -13,7 +13,7 @@ from typing import Any
 import click
 
 from config import get_settings
-from mb_queue.persist_pgmq import PersistPGMQ as QueueRepository
+from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 
 
 def get_handlers(

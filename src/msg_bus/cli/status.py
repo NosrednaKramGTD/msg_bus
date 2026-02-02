@@ -6,7 +6,7 @@ CLI that prints metrics (e.g. message counts) for a given queue name.
 import click
 
 from config import get_settings
-from mb_queue.persist_pgmq import PersistPGMQ as QueueRepository
+from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 
 
 def queue_exists(queue_repo: QueueRepository, queue_name: str) -> bool:
