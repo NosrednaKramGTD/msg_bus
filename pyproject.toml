@@ -1,0 +1,115 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "msg-bus"
+version = "0.1.0"
+description = "Message Bus, message queues."
+readme = "README.md"
+requires-python = ">=3.14"
+icense = { text = "MIT" }
+license-file = "LICENSE"
+authors = [{ name = "Mark Anderson", email = "nosrednakram@gmail.com" }]
+maintainers = [{ name = "Mark Anderson", email = "nosrednakram@gmail.com" }]
+keywords = ["pgmq", "messaging", "queue", "message queue"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Utilities",
+]
+dependencies = [
+    "app-secrets",
+    "click>=8.3.1",
+    "pgmq>=1.0.2",
+    "psycopg>=3.3.2",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.12.0",
+    "urllib3>=2.6.3",
+]
+
+[dependency-groups]
+dev = [
+    "icecream>=2.1.10",
+    "pytest>=9.0.2",
+    "ruff>=0.14.14",
+]
+
+[tool.uv.sources]
+app-secrets = { git = "https://github.com/NosrednaKramGTD/app-secrets.git" }
+
+[tool.hatch.build]
+[tool.hatch.build.targets.wheel]
+packages = ["src/mb_queue"]
+
+[tool.ruff]
+# What to check
+lint.select = [
+  "E",   # pycodestyle (errors)
+  "F",   # pyflakes
+  "I",   # isort (import sorting)
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "C90", # mccabe (complexity)
+  "SIM", # flake8-simplify
+  "PL",  # pylint-like checks (fast subset)
+  "D",   # pydocstyle (docstrings) - optional, see below
+]
+# You can start without "D" and add later if you need docstring rules.
+
+lint.ignore = [
+  "E501",  # optional: ignore line-length in lint; formatter handles wrapping
+  # Add any rules you disagree with here
+]
+
+# Targets
+src = ["src", "tests"]
+
+# Excludes (adjust as needed)
+exclude = [
+  ".git",
+  ".venv",
+  "build",
+  "dist",
+  "__pycache__",
+  "*.egg-info",
+]
+
+# Line length & Python version
+line-length = 120
+target-version = "py313"  # set to the lowest version you support
+
+# Formatting (Ruff formatter)
+[tool.ruff.format]
+quote-style = "double"           # "double" | "single" | "preserve"
+indent-style = "space"           # "space" | "tab"
+docstring-code-format = true     # format fenced code blocks in docstrings
+skip-magic-trailing-comma = false
+
+# Import sorting (Ruff replaces isort)
+[tool.ruff.lint.isort]
+known-first-party = ["app_secrets"] # helps separate local imports
+combine-as-imports = true
+
+# Complexity limits
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+# Per-file ignores (example: allow unused imports in __init__.py)
+[tool.ruff.lint.per-file-ignores]
+"src/**/__init__.py" = ["F401","D104"]  # imported but unused
+"tests/**" = ["D", "PLR2004"]    # ignore docstring rules & magic value complaints in tests
+
+# Optional: pydocstyle configuration if using "D"
+[tool.ruff.lint.pydocstyle]
+convention = "google"  # "google" | "numpy" | "pep257"
+
+[project.scripts]
+enqueue = "mb_queue.enqueue:main"
+status = "mb_queue.status:main"
+process = "mb_queue.process:main"
