@@ -9,6 +9,14 @@ This project uses several packages but the true core of the queue system is pgmq
 - [Postgres pgmq extension](https://github.com/pgmq/pgmq)
 - [Python pgmq-py package](https://github.com/pgmq/pgmq-py)
 
+## DSN
+
+You will need to export the DSN or use the --dsn parameter if using cli tools.
+
+```shell
+PGMQ_DSN=postgresql://msg_bus:PASSWORD@localhost:5432/pgmq_d
+```
+
 ## Message Data
 
 Data can be any serializable data the handleer may need. 
@@ -40,3 +48,4 @@ You can trigger these with `uv run tool --help` replacing tool with the listed t
 ### Handling Messages
 
 There is a bit to this, but the basics are that you run the process CLI tool with appropriate parameters and for every queue you process you have an identically named module in handlers. i.e. exception_test.py is the handler for the exception_test queue. Look at the base class or provided handlers. 
+
