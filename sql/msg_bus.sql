@@ -1,17 +1,11 @@
--- 0) (Optional) sanity: confirm you're in the right DB
-SELECT current_database();
+-- Create the msg_bus role and grant permissions to the pgmq extension
+-- This is a basic example and may need to be adjusted for your specific needs
 
--- 1) Create login role
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'msg_bus') THEN
-    CREATE ROLE msg_bus WITH LOGIN PASSWORD 'REPLACE_WITH_STRONG_PASSWORD';
-  END IF;
-END $$;
+-- 1) create the database
+create database msql_db if not exists msg_bus;
 
--- 2) Ensure PGMQ extension is enabled in THIS database (msql_db)
--- CREATE EXTENSION loads the extension into the current database. [1](https://www.postgresql.org/docs/current/sql-createextension.html)
-CREATE EXTENSION IF NOT EXISTS pgmq;
+-- 2) create the role
+create role msg_bus with login password 'REPLACE_WITH_STRONG_PASSWORD' if not exists;
 
 -- 3) Allow msg_bus to connect to the database
 GRANT CONNECT ON DATABASE msql_db TO msg_bus;
