@@ -34,7 +34,7 @@ def main(queue_name: str, message: str, dsn: str) -> None:
         dsn = os.getenv("PGMQ_DSN", None)
     if not dsn:
         raise click.ClickException("No DSN provided and PGMQ_DSN environment variable is not set")
-        
+
     queue_repo = QueueRepository(dsn=dsn)
     try:
         if not queue_exists(queue_repo, queue_name):
