@@ -1,4 +1,4 @@
-"""test handler for testing
+"""test handler for testing.
 
 Queue to post to and verify handlers are working.
 """
@@ -12,7 +12,7 @@ class Handler(BaseHandler):
     queue_name = "exception_test"
 
     def __init__(self) -> None:
-        """Initialize the handler"""
+        """Initialize the handler."""
         self.queue_name = "mb_test"
 
     def validate(self, message: dict) -> None:
@@ -20,5 +20,5 @@ class Handler(BaseHandler):
         return None
 
     def handle(self, message: dict) -> None:
-        """Message will always be handled"""
+        """Message will always be handled."""
         return None

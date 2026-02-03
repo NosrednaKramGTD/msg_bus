@@ -6,24 +6,22 @@ re-enqueued with error metadata and a configurable visibility timeout.
 """
 
 import importlib
-import time
-import traceback
 import os
 import sys
+import time
+import traceback
 from typing import Any
-from icecream import ic
 
 import click
 
-from config import get_settings
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 
 
 def get_handlers(
     queue_names: list[str],
     queues: list[str],
+    handlers_path: list[str],
     validate_only: bool = False,
-    handlers_path: list[str] = [],
 ) -> dict[str, callable]:
     """Load and return the handler instance for each queue name.
 
@@ -32,6 +30,7 @@ def get_handlers(
         queues: List of queue names that exist in the repository.
         validate_only: If True, require each handler to have a validate method.
         handlers_path: List of paths to search for handlers.
+
     Returns:
         Mapping of queue name to handler instance.
 
@@ -41,8 +40,7 @@ def get_handlers(
     """
     handlers: dict[str, callable] = {}
     for path in handlers_path:
-        if os.path.exists(path):
-            if path not in sys.path:
+        if os.path.exists(path) and path not in sys.path:
                 sys.path.append(path)
     print(sys.path)
     for q in queue_names:
@@ -67,6 +65,14 @@ def handle_message(message: dict, handlers: dict[str, callable], q: str) -> None
     if hasattr(handlers[q], "validate"):
         handlers[q].validate(message)
         handlers[q].handle(message)
+
+def get_dsn(dsn: str) -> str:
+    """Get DSN from environment variable or command line argument."""
+    if not dsn:
+        dsn = os.getenv("PGMQ_DSN", None)
+    if not dsn:
+        raise click.ClickException("No DSN provided and PGMQ_DSN environment variable is not set")
+    return dsn
 
 
 @click.command()
@@ -138,10 +144,7 @@ def main(**kwargs: Any) -> None:
     dsn = kwargs["dsn"]
     handlers_path = list(kwargs["handlers_path"])
 
-    if not dsn:
-        dsn = os.getenv("PGMQ_DSN", None)
-    if not dsn:
-        raise click.ClickException(f"No DSN provided and PGMQ_DSN environment variable is not set")
+    dsn = get_dsn(dsn)
         
     try:
         queue_repo = QueueRepository(dsn=dsn)

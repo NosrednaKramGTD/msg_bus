@@ -5,6 +5,7 @@ CLI that creates the queue if needed and sends a JSON message to it.
 
 import json
 import os
+
 import click
 
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
@@ -32,7 +33,7 @@ def main(queue_name: str, message: str, dsn: str) -> None:
     if not dsn:
         dsn = os.getenv("PGMQ_DSN", None)
     if not dsn:
-        raise click.ClickException(f"No DSN provided and PGMQ_DSN environment variable is not set")
+        raise click.ClickException("No DSN provided and PGMQ_DSN environment variable is not set")
         
     queue_repo = QueueRepository(dsn=dsn)
     try:
