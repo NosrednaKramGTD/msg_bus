@@ -5,6 +5,7 @@ visibility timeouts, archiving, and metrics.
 """
 
 import logging
+import os
 from urllib.parse import urlparse
 
 from pgmq import Message, PGMQueue
@@ -13,6 +14,7 @@ from pydantic import PostgresDsn
 
 from msg_bus.persist_base import PersistBase
 from msg_bus.queue_model_dto import DataDTO
+
 
 class PersistPGMQ(PersistBase):
     """Queue persistence implementation using PGMQ (PostgreSQL Message Queue).

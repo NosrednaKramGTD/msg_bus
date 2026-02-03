@@ -41,12 +41,12 @@ def get_handlers(
     handlers: dict[str, callable] = {}
     for path in handlers_path:
         if os.path.exists(path) and path not in sys.path:
-                sys.path.append(path)
+            sys.path.append(path)
     print(sys.path)
     for q in queue_names:
         if q not in queues:
             raise click.ClickException(f"Queue {q} does not exist")
-        handler_module = importlib.import_module(f'handlers.{q}')
+        handler_module = importlib.import_module(f"handlers.{q}")
         handler = handler_module.Handler()
         handlers[q] = handler
         if not hasattr(handler, "validate") and validate_only:
@@ -65,6 +65,7 @@ def handle_message(message: dict, handlers: dict[str, callable], q: str) -> None
     if hasattr(handlers[q], "validate"):
         handlers[q].validate(message)
         handlers[q].handle(message)
+
 
 def get_dsn(dsn: str) -> str:
     """Get DSN from environment variable or command line argument."""
@@ -145,15 +146,15 @@ def main(**kwargs: Any) -> None:
     handlers_path = list(kwargs["handlers_path"])
 
     dsn = get_dsn(dsn)
-        
+
     try:
         queue_repo = QueueRepository(dsn=dsn)
         queues = queue_repo.list_queues()
         # get the handlers for the given queue names and
         handlers = get_handlers(
-            list(queue_names), 
-            queues, 
-            validate_only=validate_only, 
+            list(queue_names),
+            queues,
+            validate_only=validate_only,
             handlers_path=handlers_path,
         )
         # Process messages from each queue.

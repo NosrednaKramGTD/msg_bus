@@ -1,15 +1,11 @@
+import os
 import time
 from unittest import TestCase
 
 from icecream import ic
-import os
 
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 from msg_bus.queue_model_dto import DataDTO
-
-
-
-
 
 
 class TestQueueRepository(TestCase):
