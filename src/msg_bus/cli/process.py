@@ -8,7 +8,10 @@ re-enqueued with error metadata and a configurable visibility timeout.
 import importlib
 import time
 import traceback
+import os
+import sys
 from typing import Any
+from icecream import ic
 
 import click
 
@@ -20,6 +23,7 @@ def get_handlers(
     queue_names: list[str],
     queues: list[str],
     validate_only: bool = False,
+    handlers_path: list[str] = [],
 ) -> dict[str, callable]:
     """Load and return the handler instance for each queue name.
 
@@ -27,7 +31,7 @@ def get_handlers(
         queue_names: Queue names to load handlers for.
         queues: List of queue names that exist in the repository.
         validate_only: If True, require each handler to have a validate method.
-
+        handlers_path: List of paths to search for handlers.
     Returns:
         Mapping of queue name to handler instance.
 
@@ -36,10 +40,15 @@ def get_handlers(
             a handler has no validate method.
     """
     handlers: dict[str, callable] = {}
+    for path in handlers_path:
+        if os.path.exists(path):
+            if path not in sys.path:
+                sys.path.append(path)
+    print(sys.path)
     for q in queue_names:
         if q not in queues:
             raise click.ClickException(f"Queue {q} does not exist")
-        handler_module = importlib.import_module(f"handlers.{q}")
+        handler_module = importlib.import_module(f'handlers.{q}')
         handler = handler_module.Handler()
         handlers[q] = handler
         if not hasattr(handler, "validate") and validate_only:
@@ -61,6 +70,7 @@ def handle_message(message: dict, handlers: dict[str, callable], q: str) -> None
 
 
 @click.command()
+@click.option("--dsn", type=str, required=False, help="The DSN of the database to use")
 @click.option(
     "--max-messages",
     type=int,
@@ -90,12 +100,20 @@ def handle_message(message: dict, handlers: dict[str, callable], q: str) -> None
 @click.option(
     "--delete-messages",
     is_flag=True,
+    default=False,
     help="Delete messages after processing, default is to archive them",
 )
 @click.option(
     "--validate-only",
     is_flag=True,
     help="Only validate the messages, do not process them",
+)
+@click.option(
+    "--handlers-path",
+    type=str,
+    required=True,
+    help="The path to a directory with a hanlers directory, multiple allowed",
+    multiple=True,
 )
 def main(**kwargs: Any) -> None:
     """Process messages from the given queues.
@@ -114,17 +132,27 @@ def main(**kwargs: Any) -> None:
     max_runtime = kwargs["max_runtime"]
     visibility_timeout = kwargs["visibility_timeout"]
     error_visibility_timeout = kwargs["error_visibility_timeout"]
-    queue_names = kwargs["queue_names"]
+    queue_names = list(kwargs["queue_names"])
     delete_messages = kwargs["delete_messages"]
     validate_only = kwargs["validate_only"]
+    dsn = kwargs["dsn"]
+    handlers_path = list(kwargs["handlers_path"])
 
-    settings = get_settings()
-
+    if not dsn:
+        dsn = os.getenv("PGMQ_DSN", None)
+    if not dsn:
+        raise click.ClickException(f"No DSN provided and PGMQ_DSN environment variable is not set")
+        
     try:
-        queue_repo = QueueRepository(dsn=settings.pg_dsn)
+        queue_repo = QueueRepository(dsn=dsn)
         queues = queue_repo.list_queues()
         # get the handlers for the given queue names and
-        handlers = get_handlers(list(queue_names), queues, validate_only=validate_only)
+        handlers = get_handlers(
+            list(queue_names), 
+            queues, 
+            validate_only=validate_only, 
+            handlers_path=handlers_path,
+        )
         # Process messages from each queue.
         for q in queue_names:
             # Cap runtime and message count so we don't overrun and miss future jobs.
@@ -133,6 +161,8 @@ def main(**kwargs: Any) -> None:
             while time.time() - queue_start_time < max_runtime and message_count < max_messages:
                 message_count += 1
                 message = queue_repo.dequeue(q, options={"visibility_timeout": visibility_timeout})
+                if not message:
+                    continue
                 try:
                     validate_message(message, handlers, q)
                 except Exception as e:

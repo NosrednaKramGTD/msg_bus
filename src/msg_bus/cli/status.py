@@ -4,9 +4,9 @@ CLI that prints metrics (e.g. message counts) for a given queue name.
 """
 
 import click
-
-from config import get_settings
+import os
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
+from icecream import ic
 
 
 def queue_exists(queue_repo: QueueRepository, queue_name: str) -> bool:
@@ -16,18 +16,23 @@ def queue_exists(queue_repo: QueueRepository, queue_name: str) -> bool:
 
 @click.command()
 @click.option("--queue-name", type=str, required=True, help="The name of the queue to show the status of")
-def main(queue_name: str) -> None:
+@click.option("--dsn", type=str, required=False, help="The DSN of the database to use")
+def main(queue_name: str, dsn: str) -> None:
     """Print metrics for the specified queue (e.g. total, visible, archived)."""
     click.echo("Queue status")
 
-    settings = get_settings()
-    queue_repo = QueueRepository(dsn=settings.pgmq_dsn)
+    if not dsn:
+        dsn = os.getenv("PGMQ_DSN")
+    if not dsn:
+        raise click.ClickException(f"No DSN provided and PGMQ_DSN environment variable is not set")
+        
+    queue_repo = QueueRepository(dsn=dsn)
     try:
         if not queue_exists(queue_repo, queue_name):
             raise click.ClickException(f"Queue {queue_name} does not exist")
 
         metrics = queue_repo.metrics(queue_name)
-        print(metrics)
+        ic(metrics)
     finally:
         queue_repo.close()
 

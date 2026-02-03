@@ -40,5 +40,3 @@ You can trigger these with `uv run tool --help` replacing tool with the listed t
 ### Handling Messages
 
 There is a bit to this, but the basics are that you run the process CLI tool with appropriate parameters and for every queue you process you have an identically named module in handlers. i.e. exception_test.py is the handler for the exception_test queue. Look at the base class or provided handlers. 
-
-

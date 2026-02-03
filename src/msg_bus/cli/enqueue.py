@@ -4,10 +4,9 @@ CLI that creates the queue if needed and sends a JSON message to it.
 """
 
 import json
-
+import os
 import click
 
-from config import get_settings
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 from msg_bus.queue_model_dto import DataDTO
 
@@ -25,13 +24,17 @@ def queue_exists(queue_repo: QueueRepository, queue_name: str) -> bool:
     help="The name of the queue to enqueue the message to",
 )
 @click.option("--message", type=str, required=True, help="The message to enqueue (JSON)")
-def main(queue_name: str, message: str) -> None:
+@click.option("--dsn", type=str, required=False, help="The DSN of the database to use")
+def main(queue_name: str, message: str, dsn: str) -> None:
     """Enqueue a JSON message to the specified queue; creates the queue if it does not exist."""
     click.echo(f"queue-name: {queue_name}")
     click.echo(f"message: {message}")
-
-    settings = get_settings()
-    queue_repo = QueueRepository(dsn=settings.pg_dsn)
+    if not dsn:
+        dsn = os.getenv("PGMQ_DSN", None)
+    if not dsn:
+        raise click.ClickException(f"No DSN provided and PGMQ_DSN environment variable is not set")
+        
+    queue_repo = QueueRepository(dsn=dsn)
     try:
         if not queue_exists(queue_repo, queue_name):
             try:

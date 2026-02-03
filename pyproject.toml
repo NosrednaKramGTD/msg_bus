@@ -110,6 +110,6 @@ max-complexity = 12
 convention = "google"  # "google" | "numpy" | "pep257"
 
 [project.scripts]
-enqueue = "mb_queue.enqueue:main"
-status = "mb_queue.status:main"
-process = "mb_queue.process:main"
+msg-bus-enqueue = "msg_bus.cli.enqueue:main"
+msg-bus-status = "msg_bus.cli.status:main"
+msg-bus-process = "msg_bus.cli.process:main"
