@@ -2,21 +2,24 @@ import time
 from unittest import TestCase
 
 from icecream import ic
+import os
 
-from config import get_settings
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 from msg_bus.queue_model_dto import DataDTO
 
-settings = get_settings()
 
-print(settings.pgmq_dsn)
+
+
 
 
 class TestQueueRepository(TestCase):
     @classmethod
     def setUpClass(cls):
+        dsn = os.getenv("PGMQ_DSN", None)
+        if not dsn:
+            raise Exception("PGMQ_DSN environment variable is not set")
         ic("In setUpClass")
-        cls.repo = QueueRepository(dsn=settings.pgmq_dsn)
+        cls.repo = QueueRepository(dsn=dsn)
         cls.test_queue_name = "test_queue"
         cls.repo.create_queue(cls.test_queue_name)
 
