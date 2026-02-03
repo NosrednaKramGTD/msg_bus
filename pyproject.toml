@@ -24,24 +24,20 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-    "app-secrets",
     "click>=8.3.1",
     "pgmq>=1.0.2",
     "psycopg>=3.3.2",
     "pydantic>=2.12.5",
-    "pydantic-settings>=2.12.0",
     "urllib3>=2.6.3",
+    "icecream>=2.1.10",
 ]
 
 [dependency-groups]
 dev = [
-    "icecream>=2.1.10",
+
     "pytest>=9.0.2",
     "ruff>=0.14.14",
 ]
-
-[tool.uv.sources]
-app-secrets = { git = "https://github.com/NosrednaKramGTD/app-secrets.git" }
 
 [tool.hatch.build]
 [tool.hatch.build.targets.wheel]

@@ -11,12 +11,8 @@ from pgmq import Message, PGMQueue
 from pgmq.decorators import transaction
 from pydantic import PostgresDsn
 
-from config import get_settings
 from msg_bus.persist_base import PersistBase
 from msg_bus.queue_model_dto import DataDTO
-
-settings = get_settings()
-
 
 class PersistPGMQ(PersistBase):
     """Queue persistence implementation using PGMQ (PostgreSQL Message Queue).
@@ -28,7 +24,7 @@ class PersistPGMQ(PersistBase):
 
     def __init__(self, dsn: PostgresDsn | str | None = None) -> None:
         """Connect to PostgreSQL using the given DSN or settings default."""
-        raw = dsn or settings.pgmq_dsn
+        raw = dsn or os.getenv("PGMQ_DSN", None)
         # coerce to pydantic PostgresDsn (validates) then parse as a standard URL
         parts = urlparse(str(raw))
 
