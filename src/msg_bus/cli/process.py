@@ -76,6 +76,27 @@ def get_dsn(dsn: str) -> str:
     return dsn
 
 
+def validate_queues(
+    queue_repo: QueueRepository,
+    visibility_timeout: int,
+    queue_names: list[str],
+    handlers: dict[str, callable],
+) -> None:
+    """Validate the messages from the given queues."""
+    for q in queue_names:
+        while True:
+            message = queue_repo.dequeue(q, options={"visibility_timeout": visibility_timeout})
+            if not message:
+                break
+            try:
+                validate_message(message, handlers, q)
+            except Exception as e:
+                click.secho(f"Validation error: {e}", err=True, color=True, fg="red")
+                click.secho(f"Stack trace: {traceback.format_exc()}", err=True, color=True, fg="red")
+                click.secho(f"Message: {message.message['data']}", err=True, color=True, fg="red")
+                continue
+
+
 @click.command()
 @click.option("--dsn", type=str, required=False, help="The DSN of the database to use")
 @click.option(
@@ -157,6 +178,9 @@ def main(**kwargs: Any) -> None:
             validate_only=validate_only,
             handlers_path=handlers_path,
         )
+        if validate_only:
+            validate_queues(queue_repo, visibility_timeout, queue_names, handlers)
+            os._exit(0)
         # Process messages from each queue.
         for q in queue_names:
             # Cap runtime and message count so we don't overrun and miss future jobs.
@@ -169,13 +193,6 @@ def main(**kwargs: Any) -> None:
                     continue
                 try:
                     validate_message(message, handlers, q)
-                except Exception as e:
-                    if validate_only:
-                        click.secho(f"Validation error: {e}", err=True, color=True, fg="red")
-                        click.secho(f"Stack trace: {traceback.format_exc()}", err=True, color=True, fg="red")
-                        click.secho(f"Message: {message.message['data']}", err=True, color=True, fg="red")
-                        continue
-                try:
                     handle_message(message, handlers, q)
                     if delete_messages:
                         queue_repo.delete(q, message.msg_id)
