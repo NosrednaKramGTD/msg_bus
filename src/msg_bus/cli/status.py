@@ -6,6 +6,7 @@ CLI that prints metrics (e.g. message counts) for a given queue name.
 import os
 
 import click
+import dotenv
 from icecream import ic
 
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
@@ -24,9 +25,11 @@ def main(queue_name: str, dsn: str) -> None:
     click.echo("Queue status")
 
     if not dsn:
+        if os.path.exists(".env"):
+            dotenv.load_dotenv()
         dsn = os.getenv("PGMQ_DSN")
     if not dsn:
-        raise click.ClickException("No DSN provided and PGMQ_DSN environment variable is not set")
+        raise click.ClickException("No DSN provided no .env file found")
 
     queue_repo = QueueRepository(dsn=dsn)
     try:

@@ -13,6 +13,7 @@ import traceback
 from typing import Any
 
 import click
+import dotenv
 
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 
@@ -70,9 +71,11 @@ def handle_message(message: dict, handlers: dict[str, callable], q: str) -> None
 def get_dsn(dsn: str) -> str:
     """Get DSN from environment variable or command line argument."""
     if not dsn:
+        if os.path.exists(".env"):
+            dotenv.load_dotenv()
         dsn = os.getenv("PGMQ_DSN", None)
     if not dsn:
-        raise click.ClickException("No DSN provided and PGMQ_DSN environment variable is not set")
+        raise click.ClickException("No DSN provided and .env file not found")
     return dsn
 
 

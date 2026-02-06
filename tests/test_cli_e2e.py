@@ -12,6 +12,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import dotenv
+
 # Queue and handler path
 E2E_QUEUE_NAME = "test_e2e"
 # Directory that contains the "handlers" package for process CLI (handlers.test_e2e)
@@ -22,7 +24,12 @@ SRC_DIR = PROJECT_ROOT / "src"
 
 def get_dsn() -> str | None:
     """Return PGMQ_DSN from environment; None if unset."""
-    return os.environ.get("PGMQ_DSN") or None
+    if os.path.exists(".env"):
+        dotenv.load_dotenv()
+    dsn = os.getenv("PGMQ_DSN")
+    if not dsn:
+        raise Exception("No DSN provided no .env file found")
+    return dsn
 
 
 def run_enqueue(dsn: str, queue_name: str, message: dict) -> subprocess.CompletedProcess:

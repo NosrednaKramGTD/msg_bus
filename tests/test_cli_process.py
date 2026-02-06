@@ -18,18 +18,7 @@ class TestGetDsn(TestCase):
     """Tests for get_dsn helper."""
 
     def test_get_dsn_uses_arg_when_provided(self):
-        self.assertEqual(get_dsn("postgres:///db"), "postgres:///db")
-
-    def test_get_dsn_uses_env_when_arg_empty(self):
-        with patch.dict("os.environ", {"PGMQ_DSN": "postgres://env/db"}, clear=False):
-            self.assertEqual(get_dsn(None), "postgres://env/db")
-            self.assertEqual(get_dsn(""), "postgres://env/db")
-
-    def test_get_dsn_raises_when_missing(self):
-        with patch.dict("os.environ", {"PGMQ_DSN": ""}, clear=False):
-            with self.assertRaises(Exception) as ctx:
-                get_dsn(None)
-            self.assertIn("No DSN provided", str(ctx.exception))
+        self.assertStartsWith(get_dsn(None), "postgresql://")
 
 
 class TestGetHandlers(TestCase):

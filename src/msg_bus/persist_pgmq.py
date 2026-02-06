@@ -37,7 +37,7 @@ class PersistPGMQ(PersistBase):
             database=parts.path.lstrip("/"),
             username=parts.username,
             password=parts.password,
-            verbose=True,
+            verbose=False,
             log_filename="pgmq.log",
         )
         # Add logger attribute required by @transaction decorator

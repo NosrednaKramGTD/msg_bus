@@ -7,6 +7,7 @@ import json
 import os
 
 import click
+import dotenv
 
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 from msg_bus.queue_model_dto import DataDTO
@@ -31,9 +32,11 @@ def main(queue_name: str, message: str, dsn: str) -> None:
     click.echo(f"queue-name: {queue_name}")
     click.echo(f"message: {message}")
     if not dsn:
+        if os.path.exists(".env"):
+            dotenv.load_dotenv()
         dsn = os.getenv("PGMQ_DSN", None)
     if not dsn:
-        raise click.ClickException("No DSN provided and PGMQ_DSN environment variable is not set")
+        raise click.ClickException("No DSN provided and .env file not found")
 
     queue_repo = QueueRepository(dsn=dsn)
     try:

@@ -30,6 +30,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "urllib3>=2.6.3",
     "icecream>=2.1.10",
+    "dotenv>=0.9.9",
 ]
 
 [dependency-groups]
