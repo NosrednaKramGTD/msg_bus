@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "msg_bus"
-version = "0.1.0"
+version = "0.1.1"
 description = "Message Bus, message queues."
 readme = "README.md"
 requires-python = ">=3.14"
