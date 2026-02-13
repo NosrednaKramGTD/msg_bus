@@ -12,6 +12,7 @@ class MetaDTO(BaseModel):
 
     queue_name: str = Field(..., description="Name of the queue")
     correlation_id: int | None = Field(None, description="Correlation identifier")
+    correlation_queue: str | None = Field(None, description="Correlation queue name")
     error_message: str | None = Field(None, description="Error message if any")
     stack_trace: str | None = Field(None, description="Trace of the error if any")
     target_id: str | None = Field(None, description="Associated target identifier, often Institution ID")
