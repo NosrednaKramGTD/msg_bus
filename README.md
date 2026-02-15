@@ -42,10 +42,14 @@ The version of the message. Intended to be used for handlers to know how to rout
 You can trigger these with `uv run tool --help` replacing tool with the listed tool name below to get help and understand the parameters. 
 
 - **msg-bus-enqueue** Adds an item to a queue.
-- **msg-bus-status** Lists basic metrics about a queue
+- **msg-bus-queue** Manages queues with actions: `status` (lists basic metrics), `create`, `destroy`, `purge`. Example: `uv run msg-bus-queue --queue-name my_queue --action status`
 - **msg-bus-process** Handles the messages in a queue
 
 ### Handling Messages
 
 There is a bit to this, but the basics are that you run the process CLI tool with appropriate parameters and for every queue you process you have an identically named module in handlers. i.e. exception_test.py is the handler for the exception_test queue. Look at the base class or provided handlers. 
+
+## Testing
+
+Tests mirror the source layout under `tests/`. CLI tests live in `tests/msg_bus/cli/` (e.g. `test_cli_queue.py`, `test_cli_enqueue.py`, `test_cli_process.py`). Run tests with `uv run pytest`.
 

@@ -108,7 +108,7 @@ convention = "google"  # "google" | "numpy" | "pep257"
 
 [project.scripts]
 msg-bus-enqueue = "msg_bus.cli.enqueue:main"
-msg-bus-status = "msg_bus.cli.status:main"
+msg-bus-queue = "msg_bus.cli.queue:main"
 msg-bus-process = "msg_bus.cli.process:main"
 
 [project.urls]
