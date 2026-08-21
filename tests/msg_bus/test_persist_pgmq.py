@@ -65,6 +65,35 @@ class TestPersistPGMQ(TestCase):
         self.assertEqual(result.payload.meta.queue_name, "q1")
         self.raw.read.assert_called_once_with(queue="q1", vt=10)
 
+    def test_dequeue_invalid_payload_does_not_raise(self):
+        raw_msg = MagicMock()
+        raw_msg.msg_id = 3
+        raw_msg.read_ct = 2
+        raw_msg.enqueued_at = None
+        raw_msg.vt = None
+        raw_msg.message = {"not": "a DataDTO"}
+        self.raw.read.return_value = raw_msg
+
+        result = self.repo.dequeue("q1")
+        self.assertIsInstance(result, QueueMessage)
+        self.assertEqual(result.msg_id, 3)
+        self.assertIsNone(result.payload)
+        self.assertEqual(result.raw_payload, {"not": "a DataDTO"})
+
+    def test_dequeue_non_object_payload_does_not_raise(self):
+        raw_msg = MagicMock()
+        raw_msg.msg_id = 4
+        raw_msg.read_ct = None
+        raw_msg.enqueued_at = None
+        raw_msg.vt = None
+        raw_msg.message = "oops"
+        self.raw.read.return_value = raw_msg
+
+        result = self.repo.dequeue("q1")
+        self.assertEqual(result.msg_id, 4)
+        self.assertIsNone(result.payload)
+        self.assertEqual(result.raw_payload, "oops")
+
     def test_create_partitioned_queue_kwargs(self):
         self.repo.create_queue("q1", options={"partition": True, "interval": 10, "retention": 20})
         self.raw.create_partitioned_queue.assert_called_once_with(

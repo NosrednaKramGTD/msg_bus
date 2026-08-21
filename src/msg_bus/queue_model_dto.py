@@ -5,6 +5,7 @@ metadata (queue name, correlation id, error info, etc.).
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -32,10 +33,16 @@ class DataDTO(BaseModel):
 
 
 class QueueMessage(BaseModel):
-    """Dequeued message: backend id plus the application payload."""
+    """Dequeued message: backend id plus the application payload.
+
+    ``payload`` is set when the stored JSON matches DataDTO. Otherwise it is
+    None and ``raw_payload`` holds the original value so callers can still
+    archive, delete, or dead-letter by ``msg_id``.
+    """
 
     msg_id: int = Field(..., description="Backend message identifier")
-    payload: DataDTO = Field(..., description="Application payload (data + meta)")
+    payload: DataDTO | None = Field(None, description="Application payload (data + meta) when valid")
+    raw_payload: Any = Field(None, description="Original stored JSON when payload validation failed")
     read_ct: int | None = Field(None, description="Times this message has been read")
     enqueued_at: datetime | None = Field(None, description="When the message was enqueued")
     vt: datetime | None = Field(None, description="Visibility timeout expiry")

@@ -72,11 +72,31 @@ def handle_message(message: dict, handlers: dict[str, Any], q: str) -> None:
     handlers[q].handle(message)
 
 
+def _coerce_payload_dict(raw: Any) -> dict[str, Any]:
+    """Normalize stored JSON into a ``{"data", "meta"}`` dict for dead-lettering."""
+    if hasattr(raw, "model_dump"):
+        return raw.model_dump()
+    if isinstance(raw, dict):
+        if "data" in raw or "meta" in raw:
+            data = raw.get("data")
+            meta = raw.get("meta")
+            return {
+                "data": data if isinstance(data, dict) else {"_invalid": data},
+                "meta": dict(meta) if isinstance(meta, dict) else {},
+            }
+        return {"data": raw, "meta": {}}
+    return {"data": {"_invalid": raw}, "meta": {}}
+
+
 def _payload_dict(message: Any) -> dict[str, Any]:
-    """Return the handler payload as a ``{"data", "meta"}`` dict."""
+    """Return the handler payload as a ``{"data", "meta"}`` dict.
+
+    Raises ValueError when the dequeued message did not match DataDTO so the
+    process loop can dead-letter it instead of calling the handler.
+    """
     payload = getattr(message, "payload", None)
     if payload is None:
-        raise TypeError("Dequeued message is missing payload")
+        raise ValueError(f"Invalid message payload: {getattr(message, 'raw_payload', None)!r}")
     if hasattr(payload, "model_dump"):
         return payload.model_dump()
     if isinstance(payload, dict):
@@ -134,7 +154,7 @@ def process_queues(  # noqa: PLR0913
                     queue_repo.archive(q, message.msg_id)
             except Exception as exc:
                 _emit(emit, "error", f"Error handling message: {exc}")
-                payload = _error_payload(message, exc)
+                payload = _error_payload(message, exc, queue_name=q)
                 error_message_id = queue_repo.enqueue_error(
                     q,
                     message.msg_id,
@@ -148,10 +168,17 @@ def process_queues(  # noqa: PLR0913
                     raise
 
 
-def _error_payload(message: Any, exc: Exception) -> dict[str, Any]:
+def _error_payload(message: Any, exc: Exception, queue_name: str = "") -> dict[str, Any]:
     """Attach error metadata onto a copy of the message payload."""
-    payload = _payload_dict(message)
+    payload_obj = getattr(message, "payload", None)
+    raw = payload_obj if payload_obj is not None else getattr(message, "raw_payload", None)
+    payload = _coerce_payload_dict(raw)
     meta = payload.setdefault("meta", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        payload["meta"] = meta
+    if queue_name:
+        meta.setdefault("queue_name", queue_name)
     meta["error_message"] = str(exc)
     meta["stack_trace"] = traceback.format_exc()
     return payload

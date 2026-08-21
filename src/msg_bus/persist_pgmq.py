@@ -11,6 +11,7 @@ from typing import Any
 
 from pgmq import PGMQueue
 from pgmq.decorators import transaction
+from pydantic import ValidationError
 
 from msg_bus.dsn import parse_pgmq_dsn
 from msg_bus.persist_base import PersistBase
@@ -75,7 +76,11 @@ class PersistPGMQ(PersistBase):
         return message_id
 
     def dequeue(self, queue_name: str, options: dict[str, Any] | None = None) -> QueueMessage | None:
-        """Read one message from the queue with the given visibility timeout (seconds)."""
+        """Read one message from the queue with the given visibility timeout (seconds).
+
+        Invalid stored JSON does not raise: ``payload`` is None and ``raw_payload``
+        holds the original value so the processor can dead-letter by ``msg_id``.
+        """
         options = options or {}
         visibility_timeout = options.get("visibility_timeout", 300)
         message = self.queue.read(
@@ -84,9 +89,17 @@ class PersistPGMQ(PersistBase):
         )
         if message is None:
             return None
+        raw = message.message
+        try:
+            payload = DataDTO.model_validate(raw)
+            raw_payload = None
+        except ValidationError:
+            payload = None
+            raw_payload = raw
         return QueueMessage(
             msg_id=message.msg_id,
-            payload=DataDTO.model_validate(message.message),
+            payload=payload,
+            raw_payload=raw_payload,
             read_ct=getattr(message, "read_ct", None),
             enqueued_at=getattr(message, "enqueued_at", None),
             vt=getattr(message, "vt", None),

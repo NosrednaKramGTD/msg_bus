@@ -129,3 +129,42 @@ class TestProcessQueues(TestCase):
         repo.archive.assert_not_called()
         repo.delete.assert_not_called()
         repo.enqueue_error.assert_not_called()
+
+    def test_invalid_payload_requeues_and_continues(self):
+        repo = MagicMock()
+        bad = QueueMessage(msg_id=3, payload=None, raw_payload={"foo": 1})
+        good = _queue_message(msg_id=4)
+        repo.dequeue.side_effect = [bad, good, None]
+        handler = MagicMock()
+        repo.enqueue_error.return_value = 99
+
+        process_queues(repo, ["q1"], {"q1": handler}, error_visibility_timeout=9, max_messages=10)
+
+        repo.enqueue_error.assert_called_once()
+        args, kwargs = repo.enqueue_error.call_args
+        self.assertEqual(args[0], "q1")
+        self.assertEqual(args[1], 3)
+        self.assertEqual(args[2]["data"], {"foo": 1})
+        self.assertEqual(args[2]["meta"]["queue_name"], "q1")
+        self.assertIn("Invalid message payload", args[2]["meta"]["error_message"])
+        self.assertEqual(kwargs["visibility_timeout"], 9)
+        handler.handle.assert_called_once()
+        repo.archive.assert_called_once_with("q1", 4)
+
+    def test_dequeue_validation_error_does_not_abort_queue(self):
+        """A persist layer that still raises on bad JSON must not be the only path.
+
+        PersistPGMQ returns payload=None instead of raising; this asserts the
+        processor still dead-letters and continues when given that envelope.
+        """
+        repo = MagicMock()
+        repo.dequeue.side_effect = [
+            QueueMessage(msg_id=1, payload=None, raw_payload=["not", "an", "object"]),
+            None,
+        ]
+        handler = MagicMock()
+        repo.enqueue_error.return_value = 8
+        process_queues(repo, ["q1"], {"q1": handler}, max_messages=10)
+        handler.handle.assert_not_called()
+        self.assertEqual(repo.enqueue_error.call_args[0][1], 1)
+        self.assertEqual(repo.enqueue_error.call_args[0][2]["data"]["_invalid"], ["not", "an", "object"])
