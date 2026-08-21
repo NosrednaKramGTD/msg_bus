@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "msg_bus"
-version = "0.1.1"
+version = "1.0.0"
 description = "Message Bus, message queues."
 readme = "README.md"
 requires-python = ">=3.14"
-icense = { text = "MIT" }
-license-file = "LICENSE"
+license = { text = "MIT" }
+license-files = ["LICENSE"]
 authors = [{ name = "Mark Anderson", email = "nosrednakram@gmail.com" }]
 maintainers = [{ name = "Mark Anderson", email = "nosrednakram@gmail.com" }]
 keywords = ["pgmq", "messaging", "queue", "message queue"]
@@ -28,9 +28,7 @@ dependencies = [
     "pgmq>=1.0.2",
     "psycopg>=3.3.2",
     "pydantic>=2.12.5",
-    "urllib3>=2.6.3",
-    "icecream>=2.1.10",
-    "dotenv>=0.9.9",
+    "python-dotenv>=1.0.0",
 ]
 
 [dependency-groups]
@@ -79,7 +77,7 @@ exclude = [
 
 # Line length & Python version
 line-length = 120
-target-version = "py313"  # set to the lowest version you support
+target-version = "py314"
 
 # Formatting (Ruff formatter)
 [tool.ruff.format]
@@ -90,7 +88,7 @@ skip-magic-trailing-comma = false
 
 # Import sorting (Ruff replaces isort)
 [tool.ruff.lint.isort]
-known-first-party = ["app_secrets"] # helps separate local imports
+known-first-party = ["msg_bus"]
 combine-as-imports = true
 
 # Complexity limits

@@ -1,20 +1,20 @@
 import os
 import time
-from unittest import TestCase
+from unittest import TestCase, skipIf
 
-from icecream import ic
+from dotenv import load_dotenv
 
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 from msg_bus.queue_model_dto import DataDTO
 
+load_dotenv()
 
+
+@skipIf(not os.getenv("PGMQ_DSN"), "PGMQ_DSN not set; skip live PGMQ tests")
 class TestQueueRepository(TestCase):
     @classmethod
     def setUpClass(cls):
-        dsn = os.getenv("PGMQ_DSN", None)
-        if not dsn:
-            raise Exception("PGMQ_DSN environment variable is not set")
-        ic("In setUpClass")
+        dsn = os.getenv("PGMQ_DSN")
         cls.repo = QueueRepository(dsn=dsn)
         cls.test_queue_name = "test_queue"
         cls.repo.create_queue(cls.test_queue_name)
@@ -128,8 +128,6 @@ class TestQueueRepository(TestCase):
             queue_name=self.test_queue_name,
             options={"visibility_timeout": 1},  # seconds
         )
-
-        ic(message)
 
         self.assertIsNotNone(message)
         self.assertEqual(message.msg_id, message_id)

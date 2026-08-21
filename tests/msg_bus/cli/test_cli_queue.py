@@ -38,8 +38,11 @@ class TestQueueCLI(TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Missing option", result.output)
 
-    @patch("msg_bus.cli.queue.os.getenv", return_value=None)
-    def test_fails_without_dsn_and_env(self, mock_getenv):
+    @patch(
+        "msg_bus.cli.queue.resolve_dsn",
+        side_effect=ValueError("No DSN provided and PGMQ_DSN is not set"),
+    )
+    def test_fails_without_dsn_and_env(self, _resolve):
         result = self.runner.invoke(
             main,
             ["--queue-name", "q1", "--action", "status"],
@@ -110,19 +113,18 @@ class TestQueueCLI(TestCase):
         mock_repo.purge_queue.assert_called_once_with("my_queue")
         mock_repo.close.assert_called_once()
 
-    @patch("msg_bus.cli.queue.QueueRepository")
-    def test_invalid_action_raises_click_exception(self, mock_repo_class):
-        mock_repo = MagicMock()
-        mock_repo_class.return_value = mock_repo
-
+    def test_invalid_action_raises_click_exception(self):
         result = self.runner.invoke(
             main,
             ["--queue-name", "my_queue", "--dsn", "postgres:///db", "--action", "invalid"],
         )
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Invalid action", result.output + result.stderr)
-        self.assertIn("create, status, destroy, purge", result.output + result.stderr)
-        mock_repo.close.assert_called_once()
+        combined = result.output + result.stderr
+        self.assertIn("Invalid value", combined)
+        self.assertIn("create", combined)
+        self.assertIn("status", combined)
+        self.assertIn("destroy", combined)
+        self.assertIn("purge", combined)
 
     @patch("msg_bus.cli.queue.QueueRepository")
     def test_uses_pgmq_dsn_env_when_dsn_not_provided(self, mock_repo_class):

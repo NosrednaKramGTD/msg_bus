@@ -1,103 +1,30 @@
 """Process messages from one or more queues.
 
-This module provides a CLI that dequeues messages, validates and/or handles them
-via per-queue handlers, and archives or deletes them. Failed messages can be
-re-enqueued with error metadata and a configurable visibility timeout.
+CLI wrapper around :func:`msg_bus.processor.process_queues`.
 """
 
-import importlib
-import os
-import sys
-import time
-import traceback
 from typing import Any
 
 import click
-import dotenv
 
+from msg_bus.dsn import resolve_dsn
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
+from msg_bus.processor import get_handlers, process_queues
 
 
-def get_handlers(
-    queue_names: list[str],
-    queues: list[str],
-    handlers_path: list[str],
-    validate_only: bool = False,
-) -> dict[str, callable]:
-    """Load and return the handler instance for each queue name.
-
-    Args:
-        queue_names: Queue names to load handlers for.
-        queues: List of queue names that exist in the repository.
-        validate_only: If True, require each handler to have a validate method.
-        handlers_path: List of paths to search for handlers.
-
-    Returns:
-        Mapping of queue name to handler instance.
-
-    Raises:
-        click.ClickException: If a queue does not exist or (when validate_only)
-            a handler has no validate method.
-    """
-    handlers: dict[str, callable] = {}
-    for path in handlers_path:
-        if os.path.exists(path) and path not in sys.path:
-            sys.path.append(path)
-    print(sys.path)
-    for q in queue_names:
-        if q not in queues:
-            raise click.ClickException(f"Queue {q} does not exist")
-        handler_module = importlib.import_module(f"handlers.{q}")
-        handler = handler_module.Handler()
-        handlers[q] = handler
-        if not hasattr(handler, "validate") and validate_only:
-            raise click.ClickException(f"No validator for queue: {q}")
-    return handlers
+def get_dsn(dsn: str | None) -> str:
+    """Get DSN from argument or ``PGMQ_DSN``; raise ClickException if missing."""
+    try:
+        return resolve_dsn(dsn)
+    except ValueError as err:
+        raise click.ClickException(str(err)) from err
 
 
-def validate_message(message: dict, handlers: dict[str, callable], q: str) -> None:
-    """Run the queue handler's validate method on the message, if present."""
-    if hasattr(handlers[q], "validate"):
-        handlers[q].validate(message)
-
-
-def handle_message(message: dict, handlers: dict[str, callable], q: str) -> None:
-    """Validate and then handle the message with the queue's handler."""
-    if hasattr(handlers[q], "validate"):
-        handlers[q].validate(message)
-        handlers[q].handle(message)
-
-
-def get_dsn(dsn: str) -> str:
-    """Get DSN from environment variable or command line argument."""
-    if not dsn:
-        if os.path.exists(".env"):
-            dotenv.load_dotenv()
-        dsn = os.getenv("PGMQ_DSN", None)
-    if not dsn:
-        raise click.ClickException("No DSN provided and .env file not found")
-    return dsn
-
-
-def validate_queues(
-    queue_repo: QueueRepository,
-    visibility_timeout: int,
-    queue_names: list[str],
-    handlers: dict[str, callable],
-) -> None:
-    """Validate the messages from the given queues."""
-    for q in queue_names:
-        while True:
-            message = queue_repo.dequeue(q, options={"visibility_timeout": visibility_timeout})
-            if not message:
-                break
-            try:
-                validate_message(message, handlers, q)
-            except Exception as e:
-                click.secho(f"Validation error: {e}", err=True, color=True, fg="red")
-                click.secho(f"Stack trace: {traceback.format_exc()}", err=True, color=True, fg="red")
-                click.secho(f"Message: {message.message['data']}", err=True, color=True, fg="red")
-                continue
+def _emit(level: str, text: str) -> None:
+    if level == "error":
+        click.secho(text, err=True, color=True, fg="red")
+    else:
+        click.secho(text, color=True, fg="green")
 
 
 @click.command()
@@ -143,7 +70,7 @@ def validate_queues(
     "--handlers-path",
     type=str,
     required=True,
-    help="The path to a directory with a hanlers directory, multiple allowed",
+    help="The path to a directory with a handlers directory, multiple allowed",
     multiple=True,
 )
 def main(**kwargs: Any) -> None:
@@ -152,7 +79,7 @@ def main(**kwargs: Any) -> None:
     Dequeues messages from each named queue, validates and/or handles them
     with the corresponding handler, then archives or deletes them. With
     --validate-only, only validation is run and messages are not handled
-    or removed.
+    or removed. Processing a queue stops when it is empty.
 
     Visibility timeouts should be longer than the expected processing time
     per message; when the timeout expires, the message becomes visible again
@@ -166,59 +93,37 @@ def main(**kwargs: Any) -> None:
     queue_names = list(kwargs["queue_names"])
     delete_messages = kwargs["delete_messages"]
     validate_only = kwargs["validate_only"]
-    dsn = kwargs["dsn"]
+    dsn = get_dsn(kwargs["dsn"])
     handlers_path = list(kwargs["handlers_path"])
 
-    dsn = get_dsn(dsn)
-
+    queue_repo = None
     try:
         queue_repo = QueueRepository(dsn=dsn)
         queues = queue_repo.list_queues()
-        # get the handlers for the given queue names and
-        handlers = get_handlers(
-            list(queue_names),
-            queues,
+        try:
+            handlers = get_handlers(
+                list(queue_names),
+                queues,
+                handlers_path=handlers_path,
+                validate_only=validate_only,
+            )
+        except ValueError as err:
+            raise click.ClickException(str(err)) from err
+        process_queues(
+            queue_repo,
+            queue_names,
+            handlers,
+            max_messages=max_messages,
+            max_runtime=max_runtime,
+            visibility_timeout=visibility_timeout,
+            error_visibility_timeout=error_visibility_timeout,
+            delete_messages=delete_messages,
             validate_only=validate_only,
-            handlers_path=handlers_path,
+            emit=_emit,
         )
-        if validate_only:
-            validate_queues(queue_repo, visibility_timeout, queue_names, handlers)
-            os._exit(0)
-        # Process messages from each queue.
-        for q in queue_names:
-            # Cap runtime and message count so we don't overrun and miss future jobs.
-            queue_start_time = time.time()
-            message_count = 0
-            while time.time() - queue_start_time < max_runtime and message_count < max_messages:
-                message_count += 1
-                message = queue_repo.dequeue(q, options={"visibility_timeout": visibility_timeout})
-                if not message:
-                    continue
-                try:
-                    validate_message(message, handlers, q)
-                    handle_message(message, handlers, q)
-                    if delete_messages:
-                        queue_repo.delete(q, message.msg_id)
-                    else:
-                        queue_repo.archive(q, message.msg_id)
-                except Exception as e:
-                    # Re-enqueue with error metadata and remove original so we can continue.
-                    click.secho(f"Error handling message: {e}", err=True, color=True, fg="red")
-                    message.message["meta"]["error_message"] = str(e)
-                    message.message["meta"]["stack_trace"] = traceback.format_exc()
-                    error_message_id = queue_repo.enqueue_error(
-                        message.message,
-                        message.msg_id,
-                        queue_repo.queue,
-                        visibility_timeout=error_visibility_timeout,
-                    )
-                    if error_message_id:
-                        click.secho(f"Error message re-enqueued with ID: {error_message_id}", color=True, fg="green")
-                    else:
-                        click.secho(f"Error re-enqueuing message: {e}", err=True, color=True, fg="red")
-                        raise e
     finally:
-        queue_repo.close()
+        if queue_repo is not None:
+            queue_repo.close()
 
 
 if __name__ == "__main__":

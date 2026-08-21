@@ -3,22 +3,23 @@
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from click import ClickException
 from click.testing import CliRunner
 
-from msg_bus.cli.process import (
-    get_dsn,
-    get_handlers,
-    handle_message,
-    main,
-    validate_message,
-)
+from msg_bus.cli.process import get_dsn, main
+from msg_bus.processor import get_handlers
 
 
 class TestGetDsn(TestCase):
     """Tests for get_dsn helper."""
 
     def test_get_dsn_uses_arg_when_provided(self):
-        self.assertStartsWith(get_dsn(None), "postgresql://")
+        self.assertTrue(get_dsn("postgresql://user@host/db").startswith("postgresql://"))
+
+    @patch("msg_bus.cli.process.resolve_dsn", side_effect=ValueError("No DSN provided and PGMQ_DSN is not set"))
+    def test_get_dsn_raises_click_exception_when_missing(self, _resolve):
+        with self.assertRaises(ClickException):
+            get_dsn(None)
 
 
 class TestGetHandlers(TestCase):
@@ -33,7 +34,7 @@ class TestGetHandlers(TestCase):
             )
         self.assertIn("does not exist", str(ctx.exception))
 
-    @patch("msg_bus.cli.process.importlib.import_module")
+    @patch("msg_bus.processor.importlib.import_module")
     def test_get_handlers_loads_handler_per_queue(self, mock_import):
         mock_module = MagicMock()
         mock_handler = MagicMock()
@@ -49,10 +50,10 @@ class TestGetHandlers(TestCase):
         self.assertIs(result["q1"], mock_handler)
         mock_import.assert_called_with("handlers.q1")
 
-    @patch("msg_bus.cli.process.importlib.import_module")
+    @patch("msg_bus.processor.importlib.import_module")
     def test_get_handlers_validate_only_raises_when_no_validate(self, mock_import):
         mock_module = MagicMock()
-        mock_handler = MagicMock(spec=[])  # no validate
+        mock_handler = MagicMock(spec=[])
         del mock_handler.validate
         mock_module.Handler.return_value = mock_handler
         mock_import.return_value = mock_module
@@ -66,7 +67,7 @@ class TestGetHandlers(TestCase):
             )
         self.assertIn("No validator", str(ctx.exception))
 
-    @patch("msg_bus.cli.process.importlib.import_module")
+    @patch("msg_bus.processor.importlib.import_module")
     def test_get_handlers_validate_only_succeeds_with_validate(self, mock_import):
         mock_module = MagicMock()
         mock_handler = MagicMock()
@@ -82,42 +83,6 @@ class TestGetHandlers(TestCase):
         )
         self.assertIn("q1", result)
         self.assertTrue(hasattr(result["q1"], "validate"))
-
-
-class TestValidateMessage(TestCase):
-    """Tests for validate_message helper."""
-
-    def test_validate_message_calls_handler_validate_when_present(self):
-        handlers = {"q1": MagicMock()}
-        handlers["q1"].validate = MagicMock()
-        msg = {"data": {}, "meta": {}}
-        validate_message(msg, handlers, "q1")
-        handlers["q1"].validate.assert_called_once_with(msg)
-
-    def test_validate_message_no_op_when_no_validate(self):
-        class HandlerWithoutValidate:
-            def handle(self, message):
-                pass
-
-        handler = HandlerWithoutValidate()
-        handlers = {"q1": handler}
-        msg = {}
-        validate_message(msg, handlers, "q1")
-        # No exception; validate is not called because handler has no validate
-
-
-class TestHandleMessage(TestCase):
-    """Tests for handle_message helper."""
-
-    def test_handle_message_calls_validate_then_handle(self):
-        handler = MagicMock()
-        handler.validate = MagicMock()
-        handler.handle = MagicMock()
-        handlers = {"q1": handler}
-        msg = {"data": {}}
-        handle_message(msg, handlers, "q1")
-        handler.validate.assert_called_once_with(msg)
-        handler.handle.assert_called_once_with(msg)
 
 
 class TestProcessCLI(TestCase):
@@ -144,8 +109,11 @@ class TestProcessCLI(TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Missing option", result.output)
 
-    @patch("msg_bus.cli.process.os.getenv", return_value=None)
-    def test_process_fails_without_dsn_and_env(self, mock_getenv):
+    @patch(
+        "msg_bus.cli.process.resolve_dsn",
+        side_effect=ValueError("No DSN provided and PGMQ_DSN is not set"),
+    )
+    def test_process_fails_without_dsn_and_env(self, _resolve):
         result = self.runner.invoke(
             main,
             ["--queue-names", "q1", "--handlers-path", "/tmp"],
@@ -162,8 +130,6 @@ class TestProcessCLI(TestCase):
         mock_repo_class.return_value = mock_repo
 
         mock_handler = MagicMock()
-        mock_handler.validate = MagicMock()
-        mock_handler.handle = MagicMock()
         mock_get_handlers.return_value = {"my_queue": mock_handler}
 
         result = self.runner.invoke(
@@ -179,7 +145,7 @@ class TestProcessCLI(TestCase):
                 "1",
             ],
         )
-        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.exit_code, 0, result.output + result.stderr)
         mock_repo_class.assert_called_once_with(dsn="postgres:///db")
         mock_get_handlers.assert_called_once()
         pos_args = mock_get_handlers.call_args[0]
@@ -187,4 +153,30 @@ class TestProcessCLI(TestCase):
         self.assertEqual(pos_args[0], ["my_queue"])
         self.assertEqual(pos_args[1], ["my_queue"])
         self.assertIn("handlers_path", call_kw)
+        mock_repo.close.assert_called_once()
+
+    @patch("msg_bus.cli.process.process_queues")
+    @patch("msg_bus.cli.process.get_handlers")
+    @patch("msg_bus.cli.process.QueueRepository")
+    def test_validate_only_still_closes_repo(self, mock_repo_class, mock_get_handlers, mock_process):
+        mock_repo = MagicMock()
+        mock_repo.list_queues.return_value = ["my_queue"]
+        mock_repo_class.return_value = mock_repo
+        mock_get_handlers.return_value = {"my_queue": MagicMock()}
+
+        result = self.runner.invoke(
+            main,
+            [
+                "--queue-names",
+                "my_queue",
+                "--handlers-path",
+                "/tmp",
+                "--dsn",
+                "postgres:///db",
+                "--validate-only",
+            ],
+        )
+        self.assertEqual(result.exit_code, 0, result.output + result.stderr)
+        mock_process.assert_called_once()
+        self.assertTrue(mock_process.call_args.kwargs["validate_only"])
         mock_repo.close.assert_called_once()

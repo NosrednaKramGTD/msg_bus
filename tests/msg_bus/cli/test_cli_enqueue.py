@@ -40,8 +40,11 @@ class TestEnqueueCLI(TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Missing option", result.output)
 
-    @patch("msg_bus.cli.enqueue.os.getenv", return_value=None)
-    def test_enqueue_fails_without_dsn_and_env(self, mock_getenv):
+    @patch(
+        "msg_bus.cli.enqueue.resolve_dsn",
+        side_effect=ValueError("No DSN provided and PGMQ_DSN is not set"),
+    )
+    def test_enqueue_fails_without_dsn_and_env(self, _resolve):
         result = self.runner.invoke(
             main,
             ["--queue-name", "q1", "--message", "{}"],
@@ -113,6 +116,39 @@ class TestEnqueueCLI(TestCase):
         mock_repo.create_queue.assert_not_called()
         mock_repo.enqueue.assert_called_once()
         mock_repo.close.assert_called_once()
+
+    @patch("msg_bus.cli.enqueue.QueueRepository")
+    def test_enqueue_sets_optional_meta_flags(self, mock_repo_class):
+        mock_repo = MagicMock()
+        mock_repo.list_queues.return_value = ["my_queue"]
+        mock_repo.enqueue.return_value = 7
+        mock_repo_class.return_value = mock_repo
+
+        result = self.runner.invoke(
+            main,
+            [
+                "--queue-name",
+                "my_queue",
+                "--message",
+                "{}",
+                "--dsn",
+                "postgres:///db",
+                "--correlation-id",
+                "5",
+                "--correlation-queue",
+                "hired",
+                "--target-id",
+                "emp-9",
+                "--version",
+                "2",
+            ],
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        call_dto = mock_repo.enqueue.call_args[0][0]
+        self.assertEqual(call_dto.meta.correlation_id, 5)
+        self.assertEqual(call_dto.meta.correlation_queue, "hired")
+        self.assertEqual(call_dto.meta.target_id, "emp-9")
+        self.assertEqual(call_dto.meta.version, "2")
 
     @patch("msg_bus.cli.enqueue.QueueRepository")
     def test_enqueue_uses_pgmq_dsn_env_when_dsn_not_provided(self, mock_repo_class):

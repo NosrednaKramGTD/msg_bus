@@ -4,6 +4,8 @@ Defines the shape of messages sent through the queue: payload (data) and
 metadata (queue name, correlation id, error info, etc.).
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -22,8 +24,18 @@ class MetaDTO(BaseModel):
 class DataDTO(BaseModel):
     """A queue message: payload plus metadata.
 
-    Used when enqueueing; the handler receives the same structure (e.g. message.message).
+    Used when enqueueing. Handlers receive this as a dict ``{"data": ..., "meta": ...}``.
     """
 
     data: dict = Field(..., description="Application payload (JSON-serializable dict)")
     meta: MetaDTO = Field(..., description="Message metadata")
+
+
+class QueueMessage(BaseModel):
+    """Dequeued message: backend id plus the application payload."""
+
+    msg_id: int = Field(..., description="Backend message identifier")
+    payload: DataDTO = Field(..., description="Application payload (data + meta)")
+    read_ct: int | None = Field(None, description="Times this message has been read")
+    enqueued_at: datetime | None = Field(None, description="When the message was enqueued")
+    vt: datetime | None = Field(None, description="Visibility timeout expiry")

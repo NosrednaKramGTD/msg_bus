@@ -1,4 +1,4 @@
-"""Exception-test handler for the exception_test bus.
+"""Example handler for the exception_test queue.
 
 Used to verify that validation and handling failures are caught, logged,
 and (for handle) re-enqueued with error metadata.
