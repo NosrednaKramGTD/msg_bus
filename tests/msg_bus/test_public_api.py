@@ -35,6 +35,7 @@ class TestPublicApi(TestCase):
         self.assertTrue(issubclass(DuplicateTargetError, Exception))
         self.assertTrue(issubclass(PersistPGMQ, PersistBase))
         self.assertTrue(callable(process_queues))
-        dto = DataDTO(data={}, meta=MetaDTO(queue_name="q"))
+        dto = DataDTO(data={}, meta=MetaDTO(queue_name="q", source_system="workday"))
         msg = QueueMessage(msg_id=1, payload=dto)
         self.assertEqual(msg.payload.meta.queue_name, "q")
+        self.assertEqual(msg.payload.meta.source_system, "workday")

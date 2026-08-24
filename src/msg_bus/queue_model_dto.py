@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 
 class MetaDTO(BaseModel):
-    """Metadata for a queue message (queue name, correlation, errors, version)."""
+    """Metadata for a queue message (queue name, correlation, source, errors, version)."""
 
     queue_name: str = Field(..., description="Name of the queue")
     correlation_id: int | None = Field(None, description="Correlation identifier")
@@ -19,6 +19,7 @@ class MetaDTO(BaseModel):
     error_message: str | None = Field(None, description="Error message if any")
     stack_trace: str | None = Field(None, description="Trace of the error if any")
     target_id: str | None = Field(None, description="Associated target identifier, often Institution ID")
+    source_system: str | None = Field(None, description="System that produced the message")
     version: str | None = Field(None, description="Version of the message")
 
 

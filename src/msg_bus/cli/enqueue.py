@@ -38,6 +38,7 @@ def get_dsn(dsn: str | None) -> str:
 @click.option("--correlation-id", type=int, required=False, help="Correlation identifier for the originating topic")
 @click.option("--correlation-queue", type=str, required=False, help="Queue name of the originating topic")
 @click.option("--target-id", type=str, required=False, help="Identifier of the object being acted upon")
+@click.option("--source-system", type=str, required=False, help="System that produced the message")
 @click.option("--version", type=str, required=False, help="Message payload format version")
 def main(  # noqa: PLR0913
     queue_name: str,
@@ -46,6 +47,7 @@ def main(  # noqa: PLR0913
     correlation_id: int | None,
     correlation_queue: str | None,
     target_id: str | None,
+    source_system: str | None,
     version: str | None,
 ) -> None:
     """Enqueue a JSON message to the specified queue; creates the queue if it does not exist."""
@@ -69,6 +71,7 @@ def main(  # noqa: PLR0913
                 correlation_id=correlation_id,
                 correlation_queue=correlation_queue,
                 target_id=target_id,
+                source_system=source_system,
                 version=version,
             )
             message_data = DataDTO(data=data, meta=meta)

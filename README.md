@@ -29,7 +29,7 @@ uv run msg-bus-queue --queue-name my_queue --action purge
 uv run msg-bus-queue --queue-name my_queue --action destroy
 ```
 
-**Inject a message** (`msg-bus-enqueue`). `--message` is a JSON object stored as `data`. The queue is created if it does not exist. Optional meta: `--correlation-id`, `--correlation-queue`, `--target-id`, `--version`.
+**Inject a message** (`msg-bus-enqueue`). `--message` is a JSON object stored as `data`. The queue is created if it does not exist. Optional meta: `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--version`.
 
 ```shell
 uv run msg-bus-enqueue --queue-name my_queue --message '{"id": 1, "action": "retry"}'
@@ -75,7 +75,7 @@ flowchart LR
 
 - Stored shape is always `{"data": {...}, "meta": {...}}`. Handlers receive that **dict**, not a pgmq or `QueueMessage` object.
 - Put everything the handler needs in `data`. Do not look up extra records in the handler; the producer is responsible for the payload.
-- `meta.queue_name` must be the queue you send to. Use `correlation_id` / `correlation_queue` for fan-out, `target_id` for the object acted on, `version` when the payload format changes.
+- `meta.queue_name` must be the queue you send to. Use `correlation_id` / `correlation_queue` for fan-out, `target_id` for the object acted on, `source_system` for the producing system, `version` when the payload format changes.
 - `enqueue` rejects a second pending or in-flight message with the same `queue_name` + `target_id` (`DuplicateTargetError`). Omit `target_id` to skip de-dupe. After archive or delete, a later event for that target can enqueue.
 - Handler file name equals the queue name. The class must be named `Handler` and subclass `BaseHandler`. `handle` is required; `validate` is optional (default no-op). **Raise** from either to fail the message.
 - On failure the processor re-enqueues with `error_message` and `stack_trace` and a longer visibility timeout. Invalid stored JSON never reaches `handle`; it is dead-lettered the same way.
@@ -97,6 +97,7 @@ try:
                 correlation_id=5,
                 correlation_queue="employee_hired",
                 target_id="E123",
+                source_system="workday",
                 version="1",
             ),
         )
@@ -203,11 +204,15 @@ The ID of the object to be acted upon. At the task level the data needed should 
 
 When `target_id` is set, `enqueue` is first-wins on that queue: a pending or in-flight message with the same `queue_name` and `target_id` is rejected (`DuplicateTargetError`) so duplicates cannot run out of sequence or apply twice downstream. Archived and deleted messages do not count. Leave `target_id` unset to skip de-dupe. Failure re-queue (`enqueue_error`) does not use this check.
 
+### Source System
+
+The system that produced the message (for example Workday, Banner, or a local job). Optional tracking for ops and handlers; it is not part of duplicate detection.
+
 ### Version
 
 The version of the message. Intended for handlers to know how to route message data while migrating formats.
 
-The enqueue CLI can set these via `--correlation-id`, `--correlation-queue`, `--target-id`, and `--version`. Library callers set them on `MetaDTO`.
+The enqueue CLI can set these via `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, and `--version`. Library callers set them on `MetaDTO`.
 
 ## Command Line Tools (CLI)
 
