@@ -4,8 +4,9 @@ from unittest import TestCase, skipIf
 
 from dotenv import load_dotenv
 
+from msg_bus.exceptions import DuplicateTargetError
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
-from msg_bus.queue_model_dto import DataDTO
+from msg_bus.queue_model_dto import DataDTO, MetaDTO
 
 load_dotenv()
 
@@ -148,3 +149,33 @@ class TestQueueRepository(TestCase):
 
         self.assertIsNotNone(message3)
         self.assertEqual(message3.msg_id, message_id)
+
+    def test_enqueue_rejects_duplicate_target_until_archived(self):
+        self.repo.purge_queue(self.test_queue_name)
+        target_id = "dup-target-1"
+        first = DataDTO(
+            data={"seq": 1},
+            meta=MetaDTO(queue_name=self.test_queue_name, target_id=target_id),
+        )
+        first_id = self.repo.enqueue(first)
+        self.assertIsInstance(first_id, int)
+
+        with self.assertRaises(DuplicateTargetError) as raised:
+            self.repo.enqueue(
+                DataDTO(
+                    data={"seq": 2},
+                    meta=MetaDTO(queue_name=self.test_queue_name, target_id=target_id),
+                )
+            )
+        self.assertEqual(raised.exception.existing_msg_id, first_id)
+
+        self.repo.archive(self.test_queue_name, first_id)
+        third_id = self.repo.enqueue(
+            DataDTO(
+                data={"seq": 3},
+                meta=MetaDTO(queue_name=self.test_queue_name, target_id=target_id),
+            )
+        )
+        self.assertIsInstance(third_id, int)
+        self.assertNotEqual(third_id, first_id)
+        self.repo.delete(self.test_queue_name, third_id)

@@ -8,6 +8,7 @@ import json
 import click
 
 from msg_bus.dsn import resolve_dsn
+from msg_bus.exceptions import DuplicateTargetError
 from msg_bus.persist_pgmq import PersistPGMQ as QueueRepository
 from msg_bus.queue_model_dto import DataDTO, MetaDTO
 
@@ -75,6 +76,8 @@ def main(  # noqa: PLR0913
             click.echo(f"Message enqueued with ID: {message_id}")
         except json.JSONDecodeError as err:
             raise click.ClickException(f"Invalid JSON: {message}") from err
+        except DuplicateTargetError as err:
+            raise click.ClickException(str(err)) from err
         except click.ClickException:
             raise
         except Exception as e:

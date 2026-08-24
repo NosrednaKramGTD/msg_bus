@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 
 from msg_bus.cli.enqueue import main, queue_exists
+from msg_bus.exceptions import DuplicateTargetError
 
 
 class TestQueueExists(TestCase):
@@ -178,4 +179,31 @@ class TestEnqueueCLI(TestCase):
         )
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Error creating queue", result.output)
+        mock_repo.close.assert_called_once()
+
+    @patch("msg_bus.cli.enqueue.QueueRepository")
+    def test_enqueue_duplicate_target_is_click_error(self, mock_repo_class):
+        mock_repo = MagicMock()
+        mock_repo.list_queues.return_value = ["my_queue"]
+        mock_repo.enqueue.side_effect = DuplicateTargetError("my_queue", "emp-9", 42)
+        mock_repo_class.return_value = mock_repo
+
+        result = self.runner.invoke(
+            main,
+            [
+                "--queue-name",
+                "my_queue",
+                "--message",
+                "{}",
+                "--dsn",
+                "postgres:///db",
+                "--target-id",
+                "emp-9",
+            ],
+        )
+        self.assertNotEqual(result.exit_code, 0)
+        output = result.output + result.stderr
+        self.assertIn("42", output)
+        self.assertIn("emp-9", output)
+        self.assertIn("my_queue", output)
         mock_repo.close.assert_called_once()

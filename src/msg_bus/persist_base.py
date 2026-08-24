@@ -36,7 +36,12 @@ class PersistBase(ABC):
 
     @abstractmethod
     def enqueue(self, message: DataDTO) -> int:
-        """Append a message to the queue. Returns the message ID."""
+        """Append a message to the queue. Returns the message ID.
+
+        Raises DuplicateTargetError when a pending or in-flight message already
+        exists for the same queue_name and target_id. Messages with a blank
+        target_id are not de-duplicated.
+        """
 
     @abstractmethod
     def dequeue(self, queue_name: str, options: dict[str, Any] | None = None) -> QueueMessage | None:

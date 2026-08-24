@@ -6,6 +6,7 @@ import msg_bus
 from msg_bus import (
     BaseHandler,
     DataDTO,
+    DuplicateTargetError,
     MetaDTO,
     PersistBase,
     PersistPGMQ,
@@ -19,6 +20,7 @@ class TestPublicApi(TestCase):
         for name in (
             "BaseHandler",
             "DataDTO",
+            "DuplicateTargetError",
             "MetaDTO",
             "PersistBase",
             "PersistPGMQ",
@@ -30,6 +32,7 @@ class TestPublicApi(TestCase):
 
     def test_exports_are_expected_types(self):
         self.assertTrue(issubclass(BaseHandler, object))
+        self.assertTrue(issubclass(DuplicateTargetError, Exception))
         self.assertTrue(issubclass(PersistPGMQ, PersistBase))
         self.assertTrue(callable(process_queues))
         dto = DataDTO(data={}, meta=MetaDTO(queue_name="q"))

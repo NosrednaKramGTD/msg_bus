@@ -6,8 +6,9 @@ from unittest.mock import MagicMock, patch
 
 from pgmq.messages import QueueMetrics
 
+from msg_bus.exceptions import DuplicateTargetError
 from msg_bus.persist_pgmq import PersistPGMQ, _flag_true
-from msg_bus.queue_model_dto import QueueMessage
+from msg_bus.queue_model_dto import DataDTO, MetaDTO, QueueMessage
 
 
 class TestFlagTrue(TestCase):
@@ -113,6 +114,65 @@ class TestPersistPGMQ(TestCase):
         self.repo.create_queue("q1")
         self.raw.create_queue.assert_called_once_with("q1")
         self.raw.create_partitioned_queue.assert_not_called()
+
+    def test_enqueue_without_target_id_sends_only(self):
+        self.raw.send.return_value = 5
+        conn = MagicMock()
+        result = self.repo.enqueue(
+            DataDTO(data={"a": 1}, meta=MetaDTO(queue_name="q1")),
+            conn=conn,
+        )
+        self.assertEqual(result, 5)
+        self.raw.send.assert_called_once()
+        send_kw = self.raw.send.call_args.kwargs
+        self.assertEqual(send_kw["queue"], "q1")
+        self.assertEqual(send_kw["conn"], conn)
+        self.raw.validate_queue_name.assert_not_called()
+        conn.execute.assert_not_called()
+
+    def test_enqueue_blank_target_id_skips_dedupe(self):
+        self.raw.send.return_value = 6
+        conn = MagicMock()
+        result = self.repo.enqueue(
+            DataDTO(data={}, meta=MetaDTO(queue_name="q1", target_id="  ")),
+            conn=conn,
+        )
+        self.assertEqual(result, 6)
+        self.raw.send.assert_called_once()
+        self.raw.validate_queue_name.assert_not_called()
+        conn.execute.assert_not_called()
+
+    def test_enqueue_rejects_duplicate_target_id(self):
+        conn = MagicMock()
+        conn.execute.return_value.fetchall.return_value = [(42,)]
+        with self.assertRaises(DuplicateTargetError) as raised:
+            self.repo.enqueue(
+                DataDTO(data={}, meta=MetaDTO(queue_name="hired", target_id="E123")),
+                conn=conn,
+            )
+        err = raised.exception
+        self.assertEqual(err.queue_name, "hired")
+        self.assertEqual(err.target_id, "E123")
+        self.assertEqual(err.existing_msg_id, 42)
+        self.assertIn("42", str(err))
+        self.raw.send.assert_not_called()
+        self.raw.validate_queue_name.assert_called_once_with("hired", conn=conn)
+
+    def test_enqueue_sends_when_target_id_not_pending(self):
+        self.raw.send.return_value = 7
+        conn = MagicMock()
+        conn.execute.return_value.fetchall.return_value = []
+        result = self.repo.enqueue(
+            DataDTO(data={"a": 1}, meta=MetaDTO(queue_name="q1", target_id="E123")),
+            conn=conn,
+        )
+        self.assertEqual(result, 7)
+        self.raw.send.assert_called_once()
+        send_kw = self.raw.send.call_args.kwargs
+        self.assertEqual(send_kw["queue"], "q1")
+        self.assertEqual(send_kw["conn"], conn)
+        self.raw.validate_queue_name.assert_called_once_with("q1", conn=conn)
+        self.assertEqual(conn.execute.call_count, 2)
 
     def test_enqueue_error_signature(self):
         self.raw.send.return_value = 99

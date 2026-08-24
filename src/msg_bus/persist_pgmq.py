@@ -11,11 +11,21 @@ from typing import Any
 
 from pgmq import PGMQueue
 from pgmq.decorators import transaction
+from psycopg import sql
 from pydantic import ValidationError
 
 from msg_bus.dsn import parse_pgmq_dsn
+from msg_bus.exceptions import DuplicateTargetError
 from msg_bus.persist_base import PersistBase
 from msg_bus.queue_model_dto import DataDTO, QueueMessage
+
+
+def _normalized_target_id(value: str | None) -> str | None:
+    """Return a stripped target_id, or None when missing/blank."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _flag_true(value: object) -> bool:
@@ -66,14 +76,45 @@ class PersistPGMQ(PersistBase):
         """Expose the queue's connection pool for transaction decorator."""
         return self.queue.pool
 
-    def enqueue(self, message: DataDTO) -> int:
-        """Append the message to the queue named in message.meta.queue_name. Returns message ID."""
+    @transaction
+    def enqueue(self, message: DataDTO, conn=None) -> int:
+        """Append the message to the queue named in message.meta.queue_name.
+
+        Returns the new message ID. Raises DuplicateTargetError when a pending
+        or in-flight message already exists for the same queue and target_id.
+        """
         payload = message.model_dump()
-        message_id = self.queue.send(
-            queue=message.meta.queue_name,
+        queue_name = message.meta.queue_name
+        target_id = _normalized_target_id(message.meta.target_id)
+        if target_id:
+            existing_msg_id = self._find_pending_target(queue_name, target_id, conn=conn)
+            if existing_msg_id is not None:
+                raise DuplicateTargetError(queue_name, target_id, existing_msg_id)
+        return self.queue.send(
+            queue=queue_name,
             message=payload,
+            conn=conn,
         )
-        return message_id
+
+    def _find_pending_target(self, queue_name: str, target_id: str, conn=None) -> int | None:
+        """Return the oldest pending/in-flight msg_id for this target, if any."""
+        if conn is None:
+            raise TypeError("duplicate target check requires a database connection")
+        self.queue.validate_queue_name(queue_name, conn=conn)
+        conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s));",
+            [queue_name, target_id],
+        )
+        query = sql.SQL(
+            "SELECT msg_id FROM {}.{} WHERE message->'meta'->>'target_id' = %s ORDER BY msg_id LIMIT 1"
+        ).format(
+            sql.Identifier("pgmq"),
+            sql.Identifier(f"q_{queue_name}"),
+        )
+        rows = conn.execute(query, [target_id]).fetchall()
+        if not rows:
+            return None
+        return rows[0][0]
 
     def dequeue(self, queue_name: str, options: dict[str, Any] | None = None) -> QueueMessage | None:
         """Read one message from the queue with the given visibility timeout (seconds).
