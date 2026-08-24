@@ -5,9 +5,19 @@ metadata (queue name, correlation id, error info, etc.).
 """
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+
+class ActionType(StrEnum):
+    """Canonical values for ``MetaDTO.action_type``. Other strings are also allowed."""
+
+    ADD = "add"
+    UPDATE = "update"
+    REMOVE = "remove"
+    LOCK = "lock"
 
 
 class MetaDTO(BaseModel):
@@ -20,6 +30,10 @@ class MetaDTO(BaseModel):
     stack_trace: str | None = Field(None, description="Trace of the error if any")
     target_id: str | None = Field(None, description="Associated target identifier, often Institution ID")
     source_system: str | None = Field(None, description="System that produced the message")
+    action_type: str | None = Field(
+        None,
+        description="Kind of change: add, update, remove, lock, or another producer-defined value",
+    )
     version: str | None = Field(None, description="Version of the message")
 
 

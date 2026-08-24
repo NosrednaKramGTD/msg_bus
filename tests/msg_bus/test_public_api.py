@@ -4,6 +4,7 @@ from unittest import TestCase
 
 import msg_bus
 from msg_bus import (
+    ActionType,
     BaseHandler,
     DataDTO,
     DuplicateTargetError,
@@ -18,6 +19,7 @@ from msg_bus import (
 class TestPublicApi(TestCase):
     def test_all_exports_present(self):
         for name in (
+            "ActionType",
             "BaseHandler",
             "DataDTO",
             "DuplicateTargetError",
@@ -35,7 +37,13 @@ class TestPublicApi(TestCase):
         self.assertTrue(issubclass(DuplicateTargetError, Exception))
         self.assertTrue(issubclass(PersistPGMQ, PersistBase))
         self.assertTrue(callable(process_queues))
-        dto = DataDTO(data={}, meta=MetaDTO(queue_name="q", source_system="workday"))
+        dto = DataDTO(
+            data={},
+            meta=MetaDTO(queue_name="q", source_system="workday", action_type=ActionType.ADD),
+        )
         msg = QueueMessage(msg_id=1, payload=dto)
         self.assertEqual(msg.payload.meta.queue_name, "q")
         self.assertEqual(msg.payload.meta.source_system, "workday")
+        self.assertEqual(msg.payload.meta.action_type, "add")
+        unlocked = MetaDTO(queue_name="q", action_type="unlock")
+        self.assertEqual(unlocked.action_type, "unlock")

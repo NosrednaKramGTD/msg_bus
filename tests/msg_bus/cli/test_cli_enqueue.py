@@ -142,6 +142,8 @@ class TestEnqueueCLI(TestCase):
                 "emp-9",
                 "--source-system",
                 "workday",
+                "--action-type",
+                "update",
                 "--version",
                 "2",
             ],
@@ -152,6 +154,7 @@ class TestEnqueueCLI(TestCase):
         self.assertEqual(call_dto.meta.correlation_queue, "hired")
         self.assertEqual(call_dto.meta.target_id, "emp-9")
         self.assertEqual(call_dto.meta.source_system, "workday")
+        self.assertEqual(call_dto.meta.action_type, "update")
         self.assertEqual(call_dto.meta.version, "2")
 
     @patch("msg_bus.cli.enqueue.QueueRepository")

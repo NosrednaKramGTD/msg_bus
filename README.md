@@ -29,7 +29,7 @@ uv run msg-bus-queue --queue-name my_queue --action purge
 uv run msg-bus-queue --queue-name my_queue --action destroy
 ```
 
-**Inject a message** (`msg-bus-enqueue`). `--message` is a JSON object stored as `data`. The queue is created if it does not exist. Optional meta: `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--version`.
+**Inject a message** (`msg-bus-enqueue`). `--message` is a JSON object stored as `data`. The queue is created if it does not exist. Optional meta: `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, `--version`.
 
 ```shell
 uv run msg-bus-enqueue --queue-name my_queue --message '{"id": 1, "action": "retry"}'
@@ -75,7 +75,7 @@ flowchart LR
 
 - Stored shape is always `{"data": {...}, "meta": {...}}`. Handlers receive that **dict**, not a pgmq or `QueueMessage` object.
 - Put everything the handler needs in `data`. Do not look up extra records in the handler; the producer is responsible for the payload.
-- `meta.queue_name` must be the queue you send to. Use `correlation_id` / `correlation_queue` for fan-out, `target_id` for the object acted on, `source_system` for the producing system, `version` when the payload format changes.
+- `meta.queue_name` must be the queue you send to. Use `correlation_id` / `correlation_queue` for fan-out, `target_id` for the object acted on, `source_system` for the producing system, `action_type` for the kind of change (`add` / `update` / `remove` / `lock`), `version` when the payload format changes.
 - `enqueue` rejects a second pending or in-flight message with the same `queue_name` + `target_id` (`DuplicateTargetError`). Omit `target_id` to skip de-dupe. After archive or delete, a later event for that target can enqueue.
 - Handler file name equals the queue name. The class must be named `Handler` and subclass `BaseHandler`. `handle` is required; `validate` is optional (default no-op). **Raise** from either to fail the message.
 - On failure the processor re-enqueues with `error_message` and `stack_trace` and a longer visibility timeout. Invalid stored JSON never reaches `handle`; it is dead-lettered the same way.
@@ -84,7 +84,7 @@ flowchart LR
 ### Enqueue from application code
 
 ```python
-from msg_bus import DataDTO, MetaDTO, PersistPGMQ
+from msg_bus import ActionType, DataDTO, MetaDTO, PersistPGMQ
 
 repo = PersistPGMQ()  # or PersistPGMQ(dsn="postgresql://...")
 try:
@@ -98,6 +98,7 @@ try:
                 correlation_queue="employee_hired",
                 target_id="E123",
                 source_system="workday",
+                action_type=ActionType.ADD,
                 version="1",
             ),
         )
@@ -173,6 +174,7 @@ Producer and handler examples are in [Developers: enqueue and handle messages](#
 
 ```python
 from msg_bus import (
+    ActionType,
     BaseHandler,
     DataDTO,
     DuplicateTargetError,
@@ -188,7 +190,15 @@ from msg_bus import (
 
 ## Message Data
 
-Data can be any serializable data the handler may need.
+Data can be any serializable data the handler may need. Handler fields stay flat in `data` as they are today.
+
+For later research, producers *may* add snapshots without changing the handler contract:
+
+- **update / remove:** `data["old"]` is the before image. Optionally `data["new"]` when you want an explicit pair; otherwise the rest of `data` is the current state.
+- **add:** current state only.
+- **lock:** `meta.action_type` plus whatever the handler needs; no required snapshots.
+
+The bus does not validate that `update` has `old` / `new`. Put snapshots in `--message` JSON (there are no `--old` / `--new` flags). PGMQ archive is suitable for light JSONB research (`message->'meta'->>'action_type'`), not a long-term analytics warehouse.
 
 ## Message Meta
 
@@ -208,11 +218,15 @@ When `target_id` is set, `enqueue` is first-wins on that queue: a pending or in-
 
 The system that produced the message (for example Workday, Banner, or a local job). Optional tracking for ops and handlers; it is not part of duplicate detection.
 
+### Action Type
+
+The kind of change on this queue: canonical values are `add`, `update`, `remove`, and `lock` (`ActionType` enum). Other strings (`unlock`, `merge`, …) are allowed so producers do not wait on a library bump. Optional; not used for duplicate detection. Queue name remains the work stream (`hired`, `terminated`); `action_type` is for reporting.
+
 ### Version
 
 The version of the message. Intended for handlers to know how to route message data while migrating formats.
 
-The enqueue CLI can set these via `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, and `--version`. Library callers set them on `MetaDTO`.
+The enqueue CLI can set these via `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, and `--version`. Library callers set them on `MetaDTO`.
 
 ## Command Line Tools (CLI)
 
