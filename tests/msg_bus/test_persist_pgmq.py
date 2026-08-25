@@ -147,16 +147,16 @@ class TestPersistPGMQ(TestCase):
         conn.execute.return_value.fetchall.return_value = [(42,)]
         with self.assertRaises(DuplicateTargetError) as raised:
             self.repo.enqueue(
-                DataDTO(data={}, meta=MetaDTO(queue_name="hired", target_id="E123")),
+                DataDTO(data={}, meta=MetaDTO(queue_name="account_create", target_id="E123")),
                 conn=conn,
             )
         err = raised.exception
-        self.assertEqual(err.queue_name, "hired")
+        self.assertEqual(err.queue_name, "account_create")
         self.assertEqual(err.target_id, "E123")
         self.assertEqual(err.existing_msg_id, 42)
         self.assertIn("42", str(err))
         self.raw.send.assert_not_called()
-        self.raw.validate_queue_name.assert_called_once_with("hired", conn=conn)
+        self.raw.validate_queue_name.assert_called_once_with("account_create", conn=conn)
 
     def test_enqueue_sends_when_target_id_not_pending(self):
         self.raw.send.return_value = 7

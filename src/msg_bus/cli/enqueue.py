@@ -31,7 +31,7 @@ def get_dsn(dsn: str | None) -> str:
     "--queue-name",
     type=str,
     required=True,
-    help="The name of the queue to enqueue the message to",
+    help="Queue to send to, named for how work is processed (e.g. account_create, communication)",
 )
 @click.option("--message", type=str, required=True, help="The message to enqueue (JSON)")
 @click.option("--dsn", type=str, required=False, help="The DSN of the database to use")
@@ -45,6 +45,18 @@ def get_dsn(dsn: str | None) -> str:
     required=False,
     help="Kind of change (add, update, remove, lock, or another value)",
 )
+@click.option(
+    "--business-reason",
+    type=str,
+    required=False,
+    help="Producer-defined reason the work was requested (free-form string)",
+)
+@click.option(
+    "--associated-period",
+    type=str,
+    required=False,
+    help="Optional academic period associated with the message (e.g. 2026FA)",
+)
 @click.option("--version", type=str, required=False, help="Message payload format version")
 def main(  # noqa: PLR0913
     queue_name: str,
@@ -55,6 +67,8 @@ def main(  # noqa: PLR0913
     target_id: str | None,
     source_system: str | None,
     action_type: str | None,
+    business_reason: str | None,
+    associated_period: str | None,
     version: str | None,
 ) -> None:
     """Enqueue a JSON message to the specified queue; creates the queue if it does not exist."""
@@ -80,6 +94,8 @@ def main(  # noqa: PLR0913
                 target_id=target_id,
                 source_system=source_system,
                 action_type=action_type,
+                business_reason=business_reason,
+                associated_period=associated_period,
                 version=version,
             )
             message_data = DataDTO(data=data, meta=meta)

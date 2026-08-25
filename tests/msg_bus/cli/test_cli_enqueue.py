@@ -137,13 +137,17 @@ class TestEnqueueCLI(TestCase):
                 "--correlation-id",
                 "5",
                 "--correlation-queue",
-                "hired",
+                "employee_lifecycle",
                 "--target-id",
                 "emp-9",
                 "--source-system",
                 "workday",
                 "--action-type",
                 "update",
+                "--business-reason",
+                "hire",
+                "--associated-period",
+                "2026FA",
                 "--version",
                 "2",
             ],
@@ -151,10 +155,12 @@ class TestEnqueueCLI(TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         call_dto = mock_repo.enqueue.call_args[0][0]
         self.assertEqual(call_dto.meta.correlation_id, 5)
-        self.assertEqual(call_dto.meta.correlation_queue, "hired")
+        self.assertEqual(call_dto.meta.correlation_queue, "employee_lifecycle")
         self.assertEqual(call_dto.meta.target_id, "emp-9")
         self.assertEqual(call_dto.meta.source_system, "workday")
         self.assertEqual(call_dto.meta.action_type, "update")
+        self.assertEqual(call_dto.meta.business_reason, "hire")
+        self.assertEqual(call_dto.meta.associated_period, "2026FA")
         self.assertEqual(call_dto.meta.version, "2")
 
     @patch("msg_bus.cli.enqueue.QueueRepository")

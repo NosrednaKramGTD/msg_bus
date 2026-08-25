@@ -17,13 +17,16 @@ class ActionType(StrEnum):
     ADD = "add"
     UPDATE = "update"
     REMOVE = "remove"
-    LOCK = "lock"
+    COMMUNICATION = "communication"
 
 
 class MetaDTO(BaseModel):
-    """Metadata for a queue message (queue name, correlation, source, errors, version)."""
+    """Metadata for a queue message (queue name, reason, period, correlation, source, errors, version)."""
 
-    queue_name: str = Field(..., description="Name of the queue")
+    queue_name: str = Field(
+        ...,
+        description="How the message is processed (handler/work stream), e.g. account_create, communication",
+    )
     correlation_id: int | None = Field(None, description="Correlation identifier")
     correlation_queue: str | None = Field(None, description="Correlation queue name")
     error_message: str | None = Field(None, description="Error message if any")
@@ -34,6 +37,14 @@ class MetaDTO(BaseModel):
         None,
         description="Kind of change: add, update, remove, lock, or another producer-defined value",
     )
+    business_reason: str | None = Field(
+        None,
+        description="Producer-defined reason the work was requested; the bus does not constrain values",
+    )
+    associated_period: str | None = Field(
+        None,
+        description="Optional academic period associated with the message (e.g. 2026FA)",
+    )
     version: str | None = Field(None, description="Version of the message")
 
 
@@ -41,9 +52,13 @@ class DataDTO(BaseModel):
     """A queue message: payload plus metadata.
 
     Used when enqueueing. Handlers receive this as a dict ``{"data": ..., "meta": ...}``.
+    Payload field names are by queue convention (for example ``preferred_delivery_method``).
     """
 
-    data: dict = Field(..., description="Application payload (JSON-serializable dict)")
+    data: dict = Field(
+        ...,
+        description="Application payload (JSON-serializable dict). Field names are by queue convention, e.g. preferred_delivery_method",
+    )
     meta: MetaDTO = Field(..., description="Message metadata")
 
 

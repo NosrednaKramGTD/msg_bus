@@ -29,7 +29,7 @@ uv run msg-bus-queue --queue-name my_queue --action purge
 uv run msg-bus-queue --queue-name my_queue --action destroy
 ```
 
-**Inject a message** (`msg-bus-enqueue`). `--message` is a JSON object stored as `data`. The queue is created if it does not exist. Optional meta: `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, `--version`.
+**Inject a message** (`msg-bus-enqueue`). `--message` is a JSON object stored as `data`. The queue is created if it does not exist. Name the queue for **how** it is processed (`account_create`, `communication`, `account_update`). Optional meta: `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, `--business-reason`, `--associated-period`, `--version`.
 
 ```shell
 uv run msg-bus-enqueue --queue-name my_queue --message '{"id": 1, "action": "retry"}'
@@ -42,7 +42,7 @@ uv run msg-bus-enqueue --queue-name my_queue --message '{"id": 1, "action": "ret
 uv run msg-bus-process --queue-names my_queue --handlers-path /path/to/app
 
 # Several queues in one run
-uv run msg-bus-process --queue-names hired --queue-names terminated --handlers-path /path/to/app
+uv run msg-bus-process --queue-names account_create --queue-names communication --handlers-path /path/to/app
 
 # Validate payloads/handlers without handling or removing messages
 uv run msg-bus-process --queue-names my_queue --handlers-path /path/to/app --validate-only
@@ -75,7 +75,7 @@ flowchart LR
 
 - Stored shape is always `{"data": {...}, "meta": {...}}`. Handlers receive that **dict**, not a pgmq or `QueueMessage` object.
 - Put everything the handler needs in `data`. Do not look up extra records in the handler; the producer is responsible for the payload.
-- `meta.queue_name` must be the queue you send to. Use `correlation_id` / `correlation_queue` for fan-out, `target_id` for the object acted on, `source_system` for the producing system, `action_type` for the kind of change (`add` / `update` / `remove` / `lock`), `version` when the payload format changes.
+- `meta.queue_name` must be the queue you send to, named for **how** work is processed (`account_create`, `communication`, `account_update`). Use `business_reason` for **why** (a producer-defined string; the bus does not enumerate events), optional `associated_period` for the academic term, `correlation_id` / `correlation_queue` for fan-out, `target_id` for the object acted on, `source_system` for the producing system, `action_type` for the kind of change (`add` / `update` / `remove` / `lock`), `version` when the payload format changes. Payload fields such as `preferred_delivery_method` (`SMS`, `EMAIL`) live in `data` by queue convention, not in meta.
 - `enqueue` rejects a second pending or in-flight message with the same `queue_name` + `target_id` (`DuplicateTargetError`). Omit `target_id` to skip de-dupe. After archive or delete, a later event for that target can enqueue.
 - Handler file name equals the queue name. The class must be named `Handler` and subclass `BaseHandler`. `handle` is required; `validate` is optional (default no-op). **Raise** from either to fail the message.
 - On failure the processor re-enqueues with `error_message` and `stack_trace` and a longer visibility timeout. Invalid stored JSON never reaches `handle`; it is dead-lettered the same way.
@@ -88,18 +88,39 @@ from msg_bus import ActionType, DataDTO, MetaDTO, PersistPGMQ
 
 repo = PersistPGMQ()  # or PersistPGMQ(dsn="postgresql://...")
 try:
-    repo.create_queue("hired")  # skip if ops already created the queue
+    repo.create_queue("account_create")  # skip if ops already created the queue
+    repo.create_queue("communication")
     msg_id = repo.enqueue(
         DataDTO(
             data={"employee_id": "E123", "email": "a@example.edu"},
             meta=MetaDTO(
-                queue_name="hired",
+                queue_name="account_create",
                 correlation_id=5,
-                correlation_queue="employee_hired",
+                correlation_queue="employee_lifecycle",
                 target_id="E123",
                 source_system="workday",
                 action_type=ActionType.ADD,
+                business_reason="hire",
+                associated_period="2026FA",
                 version="1",
+            ),
+        )
+    )
+    repo.enqueue(
+        DataDTO(
+            data={
+                "employee_id": "E123",
+                "preferred_delivery_method": "EMAIL",
+                "template": "welcome",
+            },
+            meta=MetaDTO(
+                queue_name="communication",
+                correlation_id=5,
+                correlation_queue="employee_lifecycle",
+                target_id="E123",
+                source_system="workday",
+                action_type=ActionType.ADD,
+                business_reason="hire",
             ),
         )
     )
@@ -115,17 +136,17 @@ flowchart TD
 
 ### Write a handler
 
-`--handlers-path` (or `get_handlers`) is the **parent** of a `handlers` package. Queue `hired` loads `handlers.hired.Handler`:
+`--handlers-path` (or `get_handlers`) is the **parent** of a `handlers` package. Queue `account_create` loads `handlers.account_create.Handler`:
 
 ```text
 my_app/
   handlers/
     __init__.py
-    hired.py
+    account_create.py
 ```
 
 ```python
-# handlers/hired.py
+# handlers/account_create.py
 from msg_bus import BaseHandler
 
 
@@ -159,7 +180,7 @@ from msg_bus.processor import get_handlers
 
 repo = PersistPGMQ()
 try:
-    names = ["hired"]
+    names = ["account_create"]
     handlers = get_handlers(names, repo.list_queues(), handlers_path=["/path/to/my_app"])
     process_queues(repo, names, handlers, max_messages=100, max_runtime=600)
 finally:
@@ -190,7 +211,12 @@ from msg_bus import (
 
 ## Message Data
 
-Data can be any serializable data the handler may need. Handler fields stay flat in `data` as they are today.
+Data can be any serializable data the handler may need. The bus does not schema-validate `data`; producers and handlers agree on field names **by convention** for each queue. Handler fields stay flat in `data`.
+
+Examples of queue-specific conventions:
+
+- **communication:** `preferred_delivery_method` (`SMS`, `EMAIL`, …), plus template or body fields the handler needs.
+- **account_create / account_update:** identity and account fields the handler needs (for example `employee_id`, `email`).
 
 For later research, producers *may* add snapshots without changing the handler contract:
 
@@ -202,11 +228,15 @@ The bus does not validate that `update` has `old` / `new`. Put snapshots in `--m
 
 ## Message Meta
 
-Meta is intentionally light: `queue_name` for lookup, plus `error_message` and `stack_trace` for error tracking.
+Meta is intentionally light: `queue_name` for lookup, plus `error_message` and `stack_trace` for error tracking. Use meta for **which stream** and **why**; put handler payload (including delivery preferences) in `data`.
+
+### Queue Name
+
+Name the queue for **how** the message is processed (the handler / work stream), not for the business event that triggered it. Examples: `account_create`, `account_update`, `communication`. Do not name queues `hire` or `terminated`; those belong on `business_reason`. Handler file name equals this queue name (`handlers.account_create.Handler`).
 
 ### Correlation ID and Correlation Queue
 
-This is the ID and queue for the originating topic, think "employee hired" ID 5. If fan-out, the process will need a way to know when all tasks are completed. This is the ID that allows your process to verify that the tasks are completed. May or may not be needed in your implementation.
+This is the ID and queue for the originating topic, think employee lifecycle ID 5. If fan-out, the process will need a way to know when all tasks are completed. This is the ID that allows your process to verify that the tasks are completed. May or may not be needed in your implementation.
 
 ### Target ID
 
@@ -220,13 +250,21 @@ The system that produced the message (for example Workday, Banner, or a local jo
 
 ### Action Type
 
-The kind of change on this queue: canonical values are `add`, `update`, `remove`, and `lock` (`ActionType` enum). Other strings (`unlock`, `merge`, …) are allowed so producers do not wait on a library bump. Optional; not used for duplicate detection. Queue name remains the work stream (`hired`, `terminated`); `action_type` is for reporting.
+The kind of change on this queue: canonical values are `add`, `update`, `remove`, and `lock` (`ActionType` enum). Other strings (`unlock`, `merge`, …) are allowed so producers do not wait on a library bump. Optional; not used for duplicate detection. Queue name remains the work stream (`account_create`, `communication`); `action_type` is for reporting.
+
+### Business Reason
+
+Why the work was requested. A producer-defined string; the bus does not enumerate or validate values so it stays independent of institutional events. Optional; not used for duplicate detection. Example: a hire that provisions an account uses queue `account_create` with `business_reason="hire"`. The same hire can also enqueue `communication` with the same reason.
+
+### Associated Period
+
+Optional academic period tied to the message (for example `2026FA` or `202610`). Student data is usually associated with a term; staff events may omit this. Not used for duplicate detection.
 
 ### Version
 
 The version of the message. Intended for handlers to know how to route message data while migrating formats.
 
-The enqueue CLI can set these via `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, and `--version`. Library callers set them on `MetaDTO`.
+The enqueue CLI can set these via `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, `--business-reason`, `--associated-period`, and `--version`. Library callers set them on `MetaDTO`.
 
 ## Command Line Tools (CLI)
 

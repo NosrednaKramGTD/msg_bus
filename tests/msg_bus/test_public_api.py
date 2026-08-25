@@ -38,12 +38,23 @@ class TestPublicApi(TestCase):
         self.assertTrue(issubclass(PersistPGMQ, PersistBase))
         self.assertTrue(callable(process_queues))
         dto = DataDTO(
-            data={},
-            meta=MetaDTO(queue_name="q", source_system="workday", action_type=ActionType.ADD),
+            data={"preferred_delivery_method": "EMAIL"},
+            meta=MetaDTO(
+                queue_name="account_create",
+                source_system="workday",
+                action_type=ActionType.ADD,
+                business_reason="hire",
+                associated_period="2026FA",
+            ),
         )
         msg = QueueMessage(msg_id=1, payload=dto)
-        self.assertEqual(msg.payload.meta.queue_name, "q")
+        self.assertEqual(msg.payload.meta.queue_name, "account_create")
         self.assertEqual(msg.payload.meta.source_system, "workday")
         self.assertEqual(msg.payload.meta.action_type, "add")
-        unlocked = MetaDTO(queue_name="q", action_type="unlock")
+        self.assertEqual(msg.payload.meta.business_reason, "hire")
+        self.assertEqual(msg.payload.meta.associated_period, "2026FA")
+        self.assertEqual(msg.payload.data["preferred_delivery_method"], "EMAIL")
+        unlocked = MetaDTO(queue_name="account_update", action_type="unlock")
         self.assertEqual(unlocked.action_type, "unlock")
+        custom_reason = MetaDTO(queue_name="communication", business_reason="rehire")
+        self.assertEqual(custom_reason.business_reason, "rehire")
