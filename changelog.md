@@ -1,4 +1,9 @@
 
+**Event key and archive lookup**
+
+* Optional `MetaDTO.event_key` is a producer-defined occurrence string (for example `workday:hire:E123:2026-08-25`). The bus does not parse it. Enqueue CLI: `--event-key`.
+* `find_archived_event(queue_name, event_key)` returns the newest archived `msg_id` for that key, or `None`. Pending rows are not searched. `enqueue` still de-dupes only pending `target_id`. Same person, new key (re-hire) is allowed after archive.
+
 **Queue naming and meta**
 
 * Queue names describe **how** work is processed (`account_create`, `communication`, `account_update`), not the business event. `MetaDTO.business_reason` is a free-form string so the bus is not coupled to institutional events. Optional `MetaDTO.associated_period` records the academic term. Delivery fields such as `preferred_delivery_method` (`SMS`, `EMAIL`) stay in `data` by queue convention. Enqueue CLI: `--business-reason`, `--associated-period`.

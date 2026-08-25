@@ -45,6 +45,7 @@ class TestPublicApi(TestCase):
                 action_type=ActionType.ADD,
                 business_reason="hire",
                 associated_period="2026FA",
+                event_key="workday:hire:E123:2026-08-25",
             ),
         )
         msg = QueueMessage(msg_id=1, payload=dto)
@@ -53,8 +54,11 @@ class TestPublicApi(TestCase):
         self.assertEqual(msg.payload.meta.action_type, "add")
         self.assertEqual(msg.payload.meta.business_reason, "hire")
         self.assertEqual(msg.payload.meta.associated_period, "2026FA")
+        self.assertEqual(msg.payload.meta.event_key, "workday:hire:E123:2026-08-25")
         self.assertEqual(msg.payload.data["preferred_delivery_method"], "EMAIL")
         unlocked = MetaDTO(queue_name="account_update", action_type="unlock")
         self.assertEqual(unlocked.action_type, "unlock")
         custom_reason = MetaDTO(queue_name="communication", business_reason="rehire")
         self.assertEqual(custom_reason.business_reason, "rehire")
+        omitted_key = MetaDTO(queue_name="communication")
+        self.assertIsNone(omitted_key.event_key)

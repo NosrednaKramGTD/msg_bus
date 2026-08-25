@@ -45,6 +45,13 @@ class MetaDTO(BaseModel):
         None,
         description="Optional academic period associated with the message (e.g. 2026FA)",
     )
+    event_key: str | None = Field(
+        None,
+        description=(
+            "Producer-defined occurrence key for archive lookup (e.g. workday:hire:E123:2026-08-25). "
+            "The bus does not parse or validate the string"
+        ),
+    )
     version: str | None = Field(None, description="Version of the message")
 
 

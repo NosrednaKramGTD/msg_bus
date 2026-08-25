@@ -20,8 +20,8 @@ from msg_bus.persist_base import PersistBase
 from msg_bus.queue_model_dto import DataDTO, QueueMessage
 
 
-def _normalized_target_id(value: str | None) -> str | None:
-    """Return a stripped target_id, or None when missing/blank."""
+def _normalized_optional_str(value: str | None) -> str | None:
+    """Return a stripped string, or None when missing/blank."""
     if value is None:
         return None
     stripped = value.strip()
@@ -85,7 +85,7 @@ class PersistPGMQ(PersistBase):
         """
         payload = message.model_dump()
         queue_name = message.meta.queue_name
-        target_id = _normalized_target_id(message.meta.target_id)
+        target_id = _normalized_optional_str(message.meta.target_id)
         if target_id:
             existing_msg_id = self._find_pending_target(queue_name, target_id, conn=conn)
             if existing_msg_id is not None:
@@ -95,6 +95,30 @@ class PersistPGMQ(PersistBase):
             message=payload,
             conn=conn,
         )
+
+    @transaction
+    def find_archived_event(self, queue_name: str, event_key: str, conn=None) -> int | None:
+        """Return the newest archived msg_id for this event_key, or None.
+
+        Blank event_key is not queried. Pending/in-flight rows are not searched.
+        """
+        key = _normalized_optional_str(event_key)
+        if not key:
+            return None
+        if conn is None:
+            raise TypeError("archived event lookup requires a database connection")
+        self.queue.validate_queue_name(queue_name, conn=conn)
+        query = sql.SQL(
+            "SELECT msg_id FROM {}.{} WHERE message->'meta'->>'event_key' = %s "
+            "ORDER BY msg_id DESC LIMIT 1"
+        ).format(
+            sql.Identifier("pgmq"),
+            sql.Identifier(f"a_{queue_name}"),
+        )
+        rows = conn.execute(query, [key]).fetchall()
+        if not rows:
+            return None
+        return rows[0][0]
 
     def _find_pending_target(self, queue_name: str, target_id: str, conn=None) -> int | None:
         """Return the oldest pending/in-flight msg_id for this target, if any."""

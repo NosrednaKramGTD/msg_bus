@@ -179,3 +179,28 @@ class TestQueueRepository(TestCase):
         self.assertIsInstance(third_id, int)
         self.assertNotEqual(third_id, first_id)
         self.repo.delete(self.test_queue_name, third_id)
+
+    def test_find_archived_event_after_archive_not_by_target(self):
+        self.repo.purge_queue(self.test_queue_name)
+        event_key = "workday:hire:E123:2026-08-25"
+        first_id = self.repo.enqueue(
+            DataDTO(
+                data={"seq": 1},
+                meta=MetaDTO(
+                    queue_name=self.test_queue_name,
+                    target_id="E123",
+                    event_key=event_key,
+                ),
+            )
+        )
+        self.assertIsNone(self.repo.find_archived_event(self.test_queue_name, event_key))
+
+        self.repo.archive(self.test_queue_name, first_id)
+        self.assertEqual(self.repo.find_archived_event(self.test_queue_name, event_key), first_id)
+        self.assertIsNone(
+            self.repo.find_archived_event(
+                self.test_queue_name,
+                "workday:hire:E123:2027-01-15",
+            )
+        )
+        self.assertIsNone(self.repo.find_archived_event(self.test_queue_name, "  "))

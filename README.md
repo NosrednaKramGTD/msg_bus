@@ -29,7 +29,7 @@ uv run msg-bus-queue --queue-name my_queue --action purge
 uv run msg-bus-queue --queue-name my_queue --action destroy
 ```
 
-**Inject a message** (`msg-bus-enqueue`). `--message` is a JSON object stored as `data`. The queue is created if it does not exist. Name the queue for **how** it is processed (`account_create`, `communication`, `account_update`). Optional meta: `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, `--business-reason`, `--associated-period`, `--version`.
+**Inject a message** (`msg-bus-enqueue`). `--message` is a JSON object stored as `data`. The queue is created if it does not exist. Name the queue for **how** it is processed (`account_create`, `communication`, `account_update`). Optional meta: `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, `--business-reason`, `--associated-period`, `--event-key`, `--version`.
 
 ```shell
 uv run msg-bus-enqueue --queue-name my_queue --message '{"id": 1, "action": "retry"}'
@@ -75,8 +75,9 @@ flowchart LR
 
 - Stored shape is always `{"data": {...}, "meta": {...}}`. Handlers receive that **dict**, not a pgmq or `QueueMessage` object.
 - Put everything the handler needs in `data`. Do not look up extra records in the handler; the producer is responsible for the payload.
-- `meta.queue_name` must be the queue you send to, named for **how** work is processed (`account_create`, `communication`, `account_update`). Use `business_reason` for **why** (a producer-defined string; the bus does not enumerate events), optional `associated_period` for the academic term, `correlation_id` / `correlation_queue` for fan-out, `target_id` for the object acted on, `source_system` for the producing system, `action_type` for the kind of change (`add` / `update` / `remove` / `lock`), `version` when the payload format changes. Payload fields such as `preferred_delivery_method` (`SMS`, `EMAIL`) live in `data` by queue convention, not in meta.
+- `meta.queue_name` must be the queue you send to, named for **how** work is processed (`account_create`, `communication`, `account_update`). Use `business_reason` for **why** (a producer-defined string; the bus does not enumerate events), optional `associated_period` for the academic term, `correlation_id` / `correlation_queue` for fan-out, `target_id` for the object acted on, `source_system` for the producing system, `action_type` for the kind of change (`add` / `update` / `remove` / `lock`), `event_key` for an occurrence used in archive lookup, `version` when the payload format changes. Payload fields such as `preferred_delivery_method` (`SMS`, `EMAIL`) live in `data` by queue convention, not in meta.
 - `enqueue` rejects a second pending or in-flight message with the same `queue_name` + `target_id` (`DuplicateTargetError`). Omit `target_id` to skip de-dupe. After archive or delete, a later event for that target can enqueue.
+- `find_archived_event(queue_name, event_key)` returns the newest archived `msg_id` for that producer-defined key, or `None`. Use it to skip a second `account_create` for the same hire occurrence without blocking a later re-hire (new `event_key`, same `target_id`). `enqueue` does not reject archived keys. Omit `event_key` when you do not need this lookup. Keep default archive (not `--delete-messages`) on create-once queues or completed work will not be found. Handlers should still no-op if the account already exists.
 - Handler file name equals the queue name. The class must be named `Handler` and subclass `BaseHandler`. `handle` is required; `validate` is optional (default no-op). **Raise** from either to fail the message.
 - On failure the processor re-enqueues with `error_message` and `stack_trace` and a longer visibility timeout. Invalid stored JSON never reaches `handle`; it is dead-lettered the same way.
 - Always `close()` the repository when your producer is done.
@@ -90,22 +91,28 @@ repo = PersistPGMQ()  # or PersistPGMQ(dsn="postgresql://...")
 try:
     repo.create_queue("account_create")  # skip if ops already created the queue
     repo.create_queue("communication")
-    msg_id = repo.enqueue(
-        DataDTO(
-            data={"employee_id": "E123", "email": "a@example.edu"},
-            meta=MetaDTO(
-                queue_name="account_create",
-                correlation_id=5,
-                correlation_queue="employee_lifecycle",
-                target_id="E123",
-                source_system="workday",
-                action_type=ActionType.ADD,
-                business_reason="hire",
-                associated_period="2026FA",
-                version="1",
-            ),
+    event_key = "workday:hire:E123:2026-08-25"
+    archived_id = repo.find_archived_event("account_create", event_key)
+    if archived_id is not None:
+        pass  # this hire occurrence already completed on this bus
+    else:
+        msg_id = repo.enqueue(
+            DataDTO(
+                data={"employee_id": "E123", "email": "a@example.edu"},
+                meta=MetaDTO(
+                    queue_name="account_create",
+                    correlation_id=5,
+                    correlation_queue="employee_lifecycle",
+                    target_id="E123",
+                    source_system="workday",
+                    action_type=ActionType.ADD,
+                    business_reason="hire",
+                    associated_period="2026FA",
+                    event_key=event_key,
+                    version="1",
+                ),
+            )
         )
-    )
     repo.enqueue(
         DataDTO(
             data={
@@ -207,7 +214,7 @@ from msg_bus import (
 )
 ```
 
-`dequeue` returns a `QueueMessage` (`msg_id` plus `payload: DataDTO` when valid). `process_queues` is the consume / validate / handle / archive loop; the process CLI wraps it.
+`dequeue` returns a `QueueMessage` (`msg_id` plus `payload: DataDTO` when valid). `process_queues` is the consume / validate / handle / archive loop; the process CLI wraps it. `find_archived_event(queue_name, event_key)` returns the newest archived `msg_id` for that key, or `None`.
 
 ## Message Data
 
@@ -236,13 +243,25 @@ Name the queue for **how** the message is processed (the handler / work stream),
 
 ### Correlation ID and Correlation Queue
 
-This is the ID and queue for the originating topic, think employee lifecycle ID 5. If fan-out, the process will need a way to know when all tasks are completed. This is the ID that allows your process to verify that the tasks are completed. May or may not be needed in your implementation.
+This is the ID and queue for the originating topic, think employee lifecycle ID 5. If fan-out, the process will need a way to know when all tasks are completed. This is the ID that allows your process to verify that the tasks are completed. May or may not be needed in your implementation. It is not used for archive lookup; a re-hire often keeps the same lifecycle id. Use `event_key` for occurrence identity.
 
 ### Target ID
 
 The ID of the object to be acted upon. At the task level the data needed should be provided by the process that adds the queue item. This is not intended for looking up additional data in the handler. It allows tracking of actions taken on a target across multiple queues.
 
 When `target_id` is set, `enqueue` is first-wins on that queue: a pending or in-flight message with the same `queue_name` and `target_id` is rejected (`DuplicateTargetError`) so duplicates cannot run out of sequence or apply twice downstream. Archived and deleted messages do not count. Leave `target_id` unset to skip de-dupe. Failure re-queue (`enqueue_error`) does not use this check.
+
+Do not use `target_id` to decide whether a create-once job already completed. It is the person; a re-hire is the same `target_id`.
+
+### Event Key
+
+Optional producer-defined string that identifies **this occurrence** of work, not the person (`target_id`) and not the originating topic (`correlation_id`). The bus does not parse or validate it. Set it when you want to ask “did this event already complete on this queue?” after success has been archived.
+
+Convention example: `{source_system}:{business_reason}:{target_id}:{event_date}` such as `workday:hire:E123:2026-08-25`. Same hire retried → same key → `find_archived_event` returns a `msg_id` and the producer can skip. Later re-hire → new date in the key → miss → new `account_create` is allowed. Omit the field when you do not need archive lookup.
+
+`find_archived_event(queue_name, event_key)` searches `pgmq.a_{queue_name}` only (pending rows are ignored) and returns the newest matching `msg_id`, or `None`. Blank keys are not queried. Lookup is per work queue, so the same key on `account_create` and `communication` is independent. `enqueue` does not reject archived keys.
+
+This is a hint, not “the account exists.” Check-then-enqueue can race; work done outside the bus or with `--delete-messages` will not be in archive. Handlers should still no-op if the account already exists. Archive scans grow with table size; if lookup is hot, add an expression index on `(message->'meta'->>'event_key')`.
 
 ### Source System
 
@@ -264,7 +283,7 @@ Optional academic period tied to the message (for example `2026FA` or `202610`).
 
 The version of the message. Intended for handlers to know how to route message data while migrating formats.
 
-The enqueue CLI can set these via `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, `--business-reason`, `--associated-period`, and `--version`. Library callers set them on `MetaDTO`.
+The enqueue CLI can set these via `--correlation-id`, `--correlation-queue`, `--target-id`, `--source-system`, `--action-type`, `--business-reason`, `--associated-period`, `--event-key`, and `--version`. Library callers set them on `MetaDTO`.
 
 ## Command Line Tools (CLI)
 

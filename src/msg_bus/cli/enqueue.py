@@ -57,6 +57,12 @@ def get_dsn(dsn: str | None) -> str:
     required=False,
     help="Optional academic period associated with the message (e.g. 2026FA)",
 )
+@click.option(
+    "--event-key",
+    type=str,
+    required=False,
+    help="Producer-defined occurrence key for archive lookup (e.g. workday:hire:E123:2026-08-25)",
+)
 @click.option("--version", type=str, required=False, help="Message payload format version")
 def main(  # noqa: PLR0913
     queue_name: str,
@@ -69,6 +75,7 @@ def main(  # noqa: PLR0913
     action_type: str | None,
     business_reason: str | None,
     associated_period: str | None,
+    event_key: str | None,
     version: str | None,
 ) -> None:
     """Enqueue a JSON message to the specified queue; creates the queue if it does not exist."""
@@ -96,6 +103,7 @@ def main(  # noqa: PLR0913
                 action_type=action_type,
                 business_reason=business_reason,
                 associated_period=associated_period,
+                event_key=event_key,
                 version=version,
             )
             message_data = DataDTO(data=data, meta=meta)

@@ -15,7 +15,8 @@ class PersistBase(ABC):
     """Abstract base class for queue persistence.
 
     Implementations must provide queue CRUD, send/receive, archive/delete,
-    and metrics. Optional kwargs (e.g. visibility_timeout) are backend-specific.
+    archived event lookup, and metrics. Optional kwargs (e.g. visibility_timeout)
+    are backend-specific.
     """
 
     @abstractmethod
@@ -54,6 +55,13 @@ class PersistBase(ABC):
     @abstractmethod
     def archive(self, queue_name: str, id: int) -> None:
         """Move the message from the main queue to the archive."""
+
+    @abstractmethod
+    def find_archived_event(self, queue_name: str, event_key: str) -> int | None:
+        """Return the newest archived msg_id for this event_key, or None.
+
+        Blank event_key is not queried. Pending/in-flight rows are not searched.
+        """
 
     @abstractmethod
     def metrics(self, queue_name: str) -> dict[str, Any]:

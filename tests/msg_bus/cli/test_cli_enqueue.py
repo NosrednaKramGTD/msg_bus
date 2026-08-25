@@ -148,6 +148,8 @@ class TestEnqueueCLI(TestCase):
                 "hire",
                 "--associated-period",
                 "2026FA",
+                "--event-key",
+                "workday:hire:emp-9:2026-08-25",
                 "--version",
                 "2",
             ],
@@ -161,6 +163,7 @@ class TestEnqueueCLI(TestCase):
         self.assertEqual(call_dto.meta.action_type, "update")
         self.assertEqual(call_dto.meta.business_reason, "hire")
         self.assertEqual(call_dto.meta.associated_period, "2026FA")
+        self.assertEqual(call_dto.meta.event_key, "workday:hire:emp-9:2026-08-25")
         self.assertEqual(call_dto.meta.version, "2")
 
     @patch("msg_bus.cli.enqueue.QueueRepository")

@@ -174,6 +174,33 @@ class TestPersistPGMQ(TestCase):
         self.raw.validate_queue_name.assert_called_once_with("q1", conn=conn)
         self.assertEqual(conn.execute.call_count, 2)
 
+    def test_find_archived_event_blank_skips_query(self):
+        conn = MagicMock()
+        self.assertIsNone(self.repo.find_archived_event("q1", "  ", conn=conn))
+        self.assertIsNone(self.repo.find_archived_event("q1", "", conn=conn))
+        self.raw.validate_queue_name.assert_not_called()
+        conn.execute.assert_not_called()
+
+    def test_find_archived_event_returns_newest_msg_id(self):
+        conn = MagicMock()
+        conn.execute.return_value.fetchall.return_value = [(99,)]
+        result = self.repo.find_archived_event(
+            "account_create",
+            "workday:hire:E123:2026-08-25",
+            conn=conn,
+        )
+        self.assertEqual(result, 99)
+        self.raw.validate_queue_name.assert_called_once_with("account_create", conn=conn)
+        conn.execute.assert_called_once()
+        self.assertEqual(conn.execute.call_args.args[1], ["workday:hire:E123:2026-08-25"])
+
+    def test_find_archived_event_returns_none_when_missing(self):
+        conn = MagicMock()
+        conn.execute.return_value.fetchall.return_value = []
+        result = self.repo.find_archived_event("q1", "workday:hire:E123:2026-08-25", conn=conn)
+        self.assertIsNone(result)
+        self.raw.validate_queue_name.assert_called_once_with("q1", conn=conn)
+
     def test_enqueue_error_signature(self):
         self.raw.send.return_value = 99
         payload = {"data": {}, "meta": {"queue_name": "q1", "error_message": "boom"}}
